@@ -64,7 +64,9 @@ export default function HomePage() {
   const groupsData = groupsQuery.data;
 
   const songs = songsData?.songs || [];
-  const groups = groupsData?.groupMembers?.map(gm => gm.group) || [];
+  const groups = groupsData?.groupMembers
+    ?.map(gm => gm.group)
+    .filter(group => group && group.id) || [];
 
   return (
     <div className="space-y-8">
