@@ -84,5 +84,8 @@ export const CHORD_SEED_DATA = [
   // Augmented Chords
   { name: 'Caug', frets: '1003', instrument: 'ukulele', tuning: 'ukulele_standard', variation: 'standard' },
   { name: 'Faug', frets: '3012', instrument: 'ukulele', tuning: 'ukulele_standard', variation: 'standard' },
+  
+  // Test chord requiring fret number (maxFret > 4)
+  { name: 'Bm5', frets: '5775', instrument: 'ukulele', tuning: 'ukulele_standard', variation: 'standard' },
 ];
 

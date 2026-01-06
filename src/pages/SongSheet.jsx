@@ -1093,7 +1093,7 @@ export default function SongSheet() {
         {chordDiagrams.length > 0 ? (
           <div className="mb-6 md:mb-0 md:w-64 md:flex-shrink-0 order-1 md:order-2">
             {/* Desktop: flex wrap layout */}
-            <div className="hidden md:flex flex-wrap gap-2 justify-start">
+            <div className="hidden md:flex flex-wrap gap-6 gap-y-6 justify-start">
               {chordDiagrams.map(({ name, frets, instrument: chordInstrument, tuning: chordTuning }) => (
                 <ChordDiagram 
                   key={name}
@@ -1105,7 +1105,7 @@ export default function SongSheet() {
               ))}
             </div>
             {/* Mobile: horizontal scrollable line */}
-            <div className="md:hidden flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
+            <div className="md:hidden flex gap-6 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
               {chordDiagrams.map(({ name, frets, instrument: chordInstrument, tuning: chordTuning }) => (
                 <ChordDiagram 
                   key={name}
