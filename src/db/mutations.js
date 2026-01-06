@@ -11,10 +11,13 @@ import { id } from '@instantdb/react';
 /**
  * Create a new song
  * @param {Object} songData - Song data (title, artist, lyrics, chords, createdBy, parentSongId)
- * @returns {Promise} Transaction promise
+ * @returns {Promise<string>} Promise that resolves with the new song ID
  */
 export async function createSong(songData) {
   const { title, artist, lyrics, chords, createdBy, parentSongId } = songData;
+  
+  // Generate song ID first so we can return it
+  const songId = id();
   
   // Always explicitly set chords - use empty JSON array if not provided
   // InstantDB may require a non-null value, so use "[]" as default
@@ -22,8 +25,8 @@ export async function createSong(songData) {
     ? chords 
     : '[]';
   
-  return db.transact(
-    db.tx.songs[id()].update({
+  await db.transact(
+    db.tx.songs[songId].update({
       title: title.trim(),
       lyrics: lyrics, // Don't trim - preserve line breaks and formatting
       artist: artist?.trim() || null,
@@ -34,13 +37,15 @@ export async function createSong(songData) {
       updatedAt: Date.now(),
     })
   );
+  
+  return songId;
 }
 
 /**
  * Copy a song (creates a new song owned by the user, based on an original)
  * @param {Object} originalSong - The original song object
  * @param {string} userId - User ID who will own the copy
- * @returns {Promise} Transaction promise
+ * @returns {Promise<string>} Promise that resolves with the new song ID
  */
 export async function copySong(originalSong, userId) {
   return createSong({

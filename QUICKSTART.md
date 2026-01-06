@@ -64,7 +64,7 @@ This will install all required packages (React, Vite, InstantDB, etc.)
 npm run dev
 ```
 
-The app will start and you should see:
+The dev server automatically manages cache - it will clear cache when configuration files change. The app will start and you should see:
 ```
   VITE v5.x.x  ready in xxx ms
 
@@ -87,13 +87,40 @@ Open http://localhost:3000 in your browser!
 
 ## Troubleshooting
 
+### Dev Server Showing Old/Stale Code
+
+The dev server automatically clears cache when config files change. If your changes still aren't appearing:
+
+1. **Force clear cache**:
+   ```bash
+   npm run dev:clean
+   ```
+   This forces cache clearing before starting the server.
+
+2. **Manual cache clear**:
+   ```bash
+   npm run clean:cache
+   npm run dev
+   ```
+
+3. **Hard refresh browser**:
+   - Windows/Linux: `Ctrl+Shift+R`
+   - Mac: `Cmd+Shift+R`
+
+4. **If still not working**:
+   ```bash
+   npm run clean:all
+   npm install
+   npm run dev
+   ```
+
 ### "Cannot find module" errors
 - Make sure you ran `npm install`
-- Delete `node_modules` and `package-lock.json`, then run `npm install` again
+- Try: `npm run clean:all && npm install`
 
 ### "App ID not found" error
 - Check that `.env` file exists and has the correct `VITE_INSTANTDB_APP_ID`
-- Restart the dev server after creating/modifying `.env`
+- Restart the dev server after creating/modifying `.env` (use `npm run dev:clean`)
 
 ### Port 3000 already in use
 - Change the port in `vite.config.js` or kill the process using port 3000
@@ -105,10 +132,13 @@ Open http://localhost:3000 in your browser!
 
 ## Available Commands
 
-- `npm run dev` - Start development server
+- `npm run dev` - Start development server (auto-manages cache)
+- `npm run dev:clean` - Force clear cache and start dev server
 - `npm run build` - Build for production
 - `npm run preview` - Preview production build
 - `npm run lint` - Run ESLint
+- `npm run clean:cache` - Clear Vite cache
+- `npm run clean:all` - Clear all caches
 
 ## Next Steps
 

@@ -46,7 +46,7 @@ export function findSongsToCopyForPrivateSongbooks(privateSongbooks, songIds) {
  * Copy a song for a user (creates a new song owned by the user)
  * @param {Object} originalSong - The original song object
  * @param {string} userId - User ID who will own the copy
- * @returns {Promise} Transaction promise (song ID will need to be queried after)
+ * @returns {Promise<string>} Promise that resolves with the new song ID
  */
 export async function copySongForUser(originalSong, userId) {
   if (!originalSong || !userId) {

@@ -21,11 +21,14 @@ export function parseLyricsWithChords(text) {
       // We need the position in the CLEANED string (after removing previous markers)
       const position = offset - removedLength;
       
+      // Trim chord name to remove any leading/trailing whitespace
+      const trimmedChordName = chordName.trim();
+      
       chords.push({
         id: `chord-${chordId++}`,
         lineIndex,
         position,
-        chord: chordName,
+        chord: trimmedChordName,
       });
       removedLength += matchStr.length; // Track how much we've removed
       return ''; // Remove chord marker from text

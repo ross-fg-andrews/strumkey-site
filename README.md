@@ -89,7 +89,8 @@ See the comprehensive plan document for detailed feature roadmap and implementat
 
 ## Available Commands
 
-- `npm run dev` - Start development server
+- `npm run dev` - Start development server (automatically clears cache when config files change)
+- `npm run dev:clean` - Force clear cache and start development server
 - `npm run build` - Build for production
 - `npm run preview` - Preview production build
 - `npm run lint` - Run ESLint
@@ -97,6 +98,8 @@ See the comprehensive plan document for detailed feature roadmap and implementat
 - `npm run sync-perms` - Sync permissions changes to InstantDB (run after modifying `src/instant.perms.ts`)
 - `npm run sync-all` - Sync both schema and permissions to InstantDB
 - `npm run watch-sync` - Automatically watch and sync schema/permissions on file changes
+- `npm run clean:cache` - Clear Vite cache (fixes most stale code issues)
+- `npm run clean:all` - Clear all caches (Vite, node_modules cache, dist)
 
 ## Building for Production
 
@@ -129,6 +132,59 @@ npm run watch-sync
 This will watch for changes to `instant.schema.ts` and `instant.perms.ts` and automatically sync them to InstantDB whenever you save the files. You can run this in a separate terminal alongside your dev server.
 
 Make sure your `.env` file contains your `VITE_INSTANTDB_APP_ID`.
+
+## Troubleshooting
+
+### Dev Server Showing Stale Code
+
+The dev server now automatically clears cache when configuration files (`vite.config.js`, `package.json`, `.env`) are modified. If you're still experiencing stale code issues:
+
+1. **Force clear cache and restart**:
+   ```bash
+   npm run dev:clean
+   ```
+   This forces cache clearing before starting the dev server.
+
+2. **Manual cache clear**:
+   ```bash
+   npm run clean:cache
+   npm run dev
+   ```
+
+3. **Hard refresh browser**:
+   - Chrome/Edge: `Ctrl+Shift+R` (Windows/Linux) or `Cmd+Shift+R` (Mac)
+   - Firefox: `Ctrl+F5` (Windows/Linux) or `Cmd+Shift+R` (Mac)
+   - Safari: `Cmd+Option+R` (Mac)
+
+4. **Clear browser cache**:
+   - Open DevTools (F12)
+   - Right-click the refresh button
+   - Select "Empty Cache and Hard Reload"
+
+5. **If issues persist**:
+   ```bash
+   npm run clean:all
+   npm install
+   npm run dev
+   ```
+
+### Environment Variable Changes Not Reflecting
+
+Vite caches environment variables. After changing `.env`:
+- Stop the dev server
+- Restart with `npm run dev` or `npm run dev:clean`
+
+### HMR (Hot Module Replacement) Not Working
+
+- Check browser console for errors
+- Ensure you're accessing `http://localhost:3000` (not a cached IP)
+- Try clearing cache: `npm run clean:cache`
+- Restart dev server
+
+### "Cannot find module" Errors
+
+- Clear all caches: `npm run clean:all`
+- Reinstall dependencies: `rm -rf node_modules package-lock.json && npm install`
 
 ## License
 

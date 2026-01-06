@@ -10,6 +10,7 @@ import ChordAutocomplete from '../components/ChordAutocomplete';
 import StyledChordEditor from '../components/StyledChordEditor';
 import ChordDiagram from '../components/ChordDiagram';
 import { findChord } from '../utils/chord-library';
+import PDFImportModal from '../components/PDFImportModal';
 
 export default function SongSheet() {
   // All hooks must be called in the same order on every render
@@ -18,6 +19,7 @@ export default function SongSheet() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
+  
   const [chordMode, setChordMode] = useState('inline'); // 'inline' or 'above'
   const [menuOpen, setMenuOpen] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -26,8 +28,11 @@ export default function SongSheet() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState(null);
+  const [showImportModal, setShowImportModal] = useState(false);
   const menuRef = useRef(null);
   const songSelectorRef = useRef(null);
+  // Track the original referrer when song is first opened in view mode
+  const originalReferrerRef = useRef(null);
   
   // Instrument and tuning settings (can be made configurable later)
   const instrument = 'ukulele';
@@ -47,7 +52,10 @@ export default function SongSheet() {
   const { data: groupsData } = useMyGroups(user?.id);
   
   // Also query groups directly as a fallback if group relation isn't populated
-  const groupIds = groupsData?.groupMembers?.map(gm => gm.groupId).filter(Boolean) || [];
+  const groupMembers = groupsData?.data?.groupMembers || [];
+  const groupIds = Array.isArray(groupMembers) 
+    ? groupMembers.map(gm => gm?.groupId).filter(Boolean)
+    : [];
   const { data: directGroupsData } = db.useQuery({
     groups: {
       $: {
@@ -61,8 +69,12 @@ export default function SongSheet() {
   const groupId = searchParams.get('group');
   
   // Get accessible songs to enrich songbookSongs
-  const accessibleSongsQuery = useAccessibleSongs(user?.id || null);
-  const allSongs = accessibleSongsQuery.data?.songs || [];
+  // Use null instead of undefined to ensure consistent hook calls
+  const accessibleSongsQuery = useAccessibleSongs(user?.id ?? null);
+  // Ensure we always have an array, even if data is undefined
+  const allSongs = (accessibleSongsQuery?.data?.songs && Array.isArray(accessibleSongsQuery.data.songs)) 
+    ? accessibleSongsQuery.data.songs 
+    : [];
   const accessibleSongsMap = new Map(
     allSongs.map(song => [song.id, song])
   );
@@ -80,10 +92,19 @@ export default function SongSheet() {
   
   // Enrich songbookSongs with song data from accessible songs
   // Also include the current song even if not in accessibleSongs (user is viewing it)
+  // This handles the case where a newly created song isn't in accessible songs yet
   const contextSongbookSongs = useMemo(() => {
+    if (!Array.isArray(rawSongbookSongs)) {
+      return [];
+    }
     return rawSongbookSongs
       .map(ss => {
-        const songData = accessibleSongsMap.get(ss.songId) || (ss.songId === id ? song : null);
+        // Try to get song from accessible songs map first
+        let songData = accessibleSongsMap.get(ss.songId);
+        // If not found and this is the current song being viewed, use the song from useSong hook
+        if (!songData && ss.songId === id && song) {
+          songData = song;
+        }
         if (songData) {
           return { ...ss, song: songData };
         }
@@ -98,6 +119,67 @@ export default function SongSheet() {
   const isViewMode = !isEditMode && !isCreateMode && id;
   
   const inSongbooks = isViewMode && songbookData?.songbookSongs?.length > 0;
+
+  // Track original referrer when entering view mode for the first time
+  // Use sessionStorage to persist across navigation
+  useEffect(() => {
+    if (isViewMode && id) {
+      const storageKey = `song_referrer_${id}`;
+      
+      // If we have a referrer in location.state, prioritize it and store it
+      if (location.state?.referrer) {
+        originalReferrerRef.current = location.state.referrer;
+        sessionStorage.setItem(storageKey, location.state.referrer);
+        console.log('[SongSheet] Stored referrer from location.state:', location.state.referrer);
+        return;
+      }
+      
+      // Check sessionStorage (might already be set from previous visit)
+      const storedReferrer = sessionStorage.getItem(storageKey);
+      if (storedReferrer) {
+        originalReferrerRef.current = storedReferrer;
+        console.log('[SongSheet] Using stored referrer from sessionStorage:', storedReferrer);
+        return;
+      }
+      
+      // Otherwise, infer from query params or use default
+      let referrer = '/songs';
+      if (groupId) {
+        referrer = `/groups/${groupId}?tab=songs`;
+      } else if (songbookId) {
+        referrer = `/songbooks/${songbookId}`;
+      } else {
+        // Try to detect from document.referrer
+        const docReferrer = document.referrer;
+        if (docReferrer) {
+          try {
+            const referrerUrl = new URL(docReferrer);
+            const referrerPath = referrerUrl.pathname;
+            // If coming from /songs, /songbooks, or /groups, use that
+            if (referrerPath.startsWith('/songs') && !referrerPath.includes('/songs/')) {
+              referrer = '/songs';
+            } else if (referrerPath.startsWith('/songbooks/')) {
+              const match = referrerPath.match(/\/songbooks\/([^\/]+)/);
+              if (match) {
+                referrer = `/songbooks/${match[1]}`;
+              }
+            } else if (referrerPath.startsWith('/groups/')) {
+              const match = referrerPath.match(/\/groups\/([^\/]+)/);
+              if (match) {
+                referrer = `/groups/${match[1]}?tab=songs`;
+              }
+            }
+          } catch (e) {
+            // Invalid URL, use default
+          }
+        }
+      }
+      
+      originalReferrerRef.current = referrer;
+      sessionStorage.setItem(storageKey, referrer);
+      console.log('[SongSheet] Inferred and stored referrer:', referrer);
+    }
+  }, [isViewMode, id, location.state, groupId, songbookId]);
 
   // Check if user has editing rights (user created the song)
   const canEdit = user && song && song.createdBy === user.id;
@@ -148,15 +230,19 @@ export default function SongSheet() {
   }, [menuOpen, songSelectorOpen]);
 
   // Parse chords from JSON string (must be before early returns for hooks)
-  let chords = [];
-  if (song?.chords) {
+  // Always ensure chords is an array to maintain consistent hook dependencies
+  const chords = useMemo(() => {
+    if (!song?.chords) {
+      return [];
+    }
     try {
-      chords = JSON.parse(song.chords);
+      const parsed = JSON.parse(song.chords);
+      return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
       console.error('Error parsing chords:', e);
-      chords = [];
+      return [];
     }
-  }
+  }, [song?.chords]);
   
   // Extract unique chord names from the song (must be before early returns)
   const uniqueChordNames = useMemo(() => {
@@ -164,7 +250,11 @@ export default function SongSheet() {
     const chordNames = new Set();
     chords.forEach(chord => {
       if (chord.chord) {
-        chordNames.add(chord.chord);
+        // Trim and normalize chord name to ensure proper matching
+        const normalizedChord = chord.chord.trim();
+        if (normalizedChord) {
+          chordNames.add(normalizedChord);
+        }
       }
     });
     return Array.from(chordNames);
@@ -271,23 +361,60 @@ export default function SongSheet() {
           chords: chordsJson,
         });
         // Preserve query parameters when navigating back to view mode
+        // Also preserve the referrer from location.state or our ref
         const params = new URLSearchParams();
         if (songbookId) params.set('songbook', songbookId);
         if (groupId) params.set('group', groupId);
         const queryString = params.toString();
-        navigate(`/songs/${id}${queryString ? `?${queryString}` : ''}`);
+        
+        // Get the referrer - check sessionStorage first (most reliable)
+        let referrer = null;
+        if (id) {
+          const storageKey = `song_referrer_${id}`;
+          referrer = sessionStorage.getItem(storageKey);
+        }
+        
+        // If not in sessionStorage, check location.state or ref
+        if (!referrer) {
+          referrer = location.state?.referrer || originalReferrerRef.current;
+        }
+        
+        // If still not found, infer from query params or use default
+        if (!referrer) {
+          if (groupId) {
+            referrer = `/groups/${groupId}?tab=songs`;
+          } else if (songbookId) {
+            referrer = `/songbooks/${songbookId}`;
+          } else {
+            referrer = '/songs';
+          }
+        }
+        
+        console.log('[SongSheet] handleSave - referrer:', referrer, 'location.state:', location.state, 'originalReferrerRef:', originalReferrerRef.current, 'sessionStorage before:', id ? sessionStorage.getItem(`song_referrer_${id}`) : 'no id');
+        
+        // ALWAYS store in sessionStorage BEFORE navigating (ensures it's available when Back is clicked)
+        if (id && referrer) {
+          sessionStorage.setItem(`song_referrer_${id}`, referrer);
+          console.log('[SongSheet] handleSave - stored referrer in sessionStorage:', referrer);
+        }
+        
+        navigate(`/songs/${id}${queryString ? `?${queryString}` : ''}`, {
+          state: { referrer },
+          replace: true, // Replace edit mode in history so back button doesn't go back to edit
+        });
       } else {
-        const newSong = await createSong({
+        const newSongId = await createSong({
           title,
           lyrics,
           artist,
           chords: chordsJson,
           createdBy: user.id,
         });
-        // Navigate to the new song (we need to get the ID from the response)
-        // For now, navigate to home - the createSong might not return the ID directly
-        // Let's check the mutations file to see what it returns
-        navigate('/home');
+        // Wait a bit longer to ensure InstantDB has synced the new song
+        // This prevents hook order issues when the component tries to load before data is ready
+        await new Promise(resolve => setTimeout(resolve, 300));
+        // Navigate to the newly created song view with replace to avoid history issues
+        navigate(`/songs/${newSongId}`, { replace: true });
       }
     } catch (error) {
       console.error('Error saving song:', error);
@@ -306,11 +433,38 @@ export default function SongSheet() {
   const handleCancel = () => {
     if (isEditMode) {
       // Preserve query parameters when canceling edit
+      // Also preserve the referrer from location.state
       const params = new URLSearchParams();
       if (songbookId) params.set('songbook', songbookId);
       if (groupId) params.set('group', groupId);
       const queryString = params.toString();
-      navigate(`/songs/${id}${queryString ? `?${queryString}` : ''}`);
+      
+      // Get the referrer from location.state, ref, or sessionStorage
+      // If not present, infer it from query params or use default
+      let referrer = location.state?.referrer || originalReferrerRef.current;
+      if (!referrer && id) {
+        const storageKey = `song_referrer_${id}`;
+        referrer = sessionStorage.getItem(storageKey);
+      }
+      if (!referrer) {
+        if (groupId) {
+          referrer = `/groups/${groupId}?tab=songs`;
+        } else if (songbookId) {
+          referrer = `/songbooks/${songbookId}`;
+        } else {
+          referrer = '/songs';
+        }
+      }
+      
+      // Store in sessionStorage for persistence
+      if (id) {
+        sessionStorage.setItem(`song_referrer_${id}`, referrer);
+      }
+      
+      navigate(`/songs/${id}${queryString ? `?${queryString}` : ''}`, {
+        state: { referrer },
+        replace: true, // Replace edit mode in history so back button doesn't go back to edit
+      });
     } else {
       navigate('/home');
     }
@@ -338,8 +492,19 @@ export default function SongSheet() {
   };
 
 
-  // Show loading state when editing and song is not yet loaded
+  // Show loading state when editing/viewing and song is not yet loaded
+  // This handles the case where we navigate to a newly created song before InstantDB syncs
   if ((isEditMode || isViewMode) && !song && !error && !isCreateMode) {
+    return (
+      <div className="max-w-4xl mx-auto">
+        <p>Loading song...</p>
+      </div>
+    );
+  }
+  
+  // Also handle the case where we're in view mode but song data isn't ready yet
+  // This can happen when navigating immediately after creating a song
+  if (isViewMode && id && !song && !error) {
     return (
       <div className="max-w-4xl mx-auto">
         <p>Loading song...</p>
@@ -360,11 +525,29 @@ export default function SongSheet() {
     const handleBackEdit = () => {
       if (isEditMode && id) {
         // If editing, go back to the song view (preserve context)
+        // Store the referrer from before edit mode in location.state
         const params = new URLSearchParams();
         if (songbookId) params.set('songbook', songbookId);
         if (groupId) params.set('group', groupId);
         const queryString = params.toString();
-        navigate(`/songs/${id}${queryString ? `?${queryString}` : ''}`);
+        
+        // Get the referrer from location.state (where user was before opening the song)
+        // If not present, infer it from query params or use default
+        let referrer = location.state?.referrer;
+        if (!referrer) {
+          if (groupId) {
+            referrer = `/groups/${groupId}?tab=songs`;
+          } else if (songbookId) {
+            referrer = `/songbooks/${songbookId}`;
+          } else {
+            referrer = '/songs';
+          }
+        }
+        
+        navigate(`/songs/${id}${queryString ? `?${queryString}` : ''}`, {
+          state: { referrer },
+          replace: true, // Replace edit mode in history so back button doesn't go back to edit
+        });
       } else {
         // If creating, check for group context first
         if (groupId) {
@@ -374,6 +557,19 @@ export default function SongSheet() {
         } else {
           navigate('/songs');
         }
+      }
+    };
+
+    const handleImport = (importedData) => {
+      // Pre-fill form fields with imported data
+      if (importedData.title) {
+        setTitle(importedData.title);
+      }
+      if (importedData.artist) {
+        setArtist(importedData.artist);
+      }
+      if (importedData.lyricsText) {
+        setLyricsText(importedData.lyricsText);
       }
     };
 
@@ -412,6 +608,16 @@ export default function SongSheet() {
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
+          {isCreateMode && (
+            <button
+              type="button"
+              onClick={() => setShowImportModal(true)}
+              disabled={saving}
+              className="btn btn-secondary"
+            >
+              Import
+            </button>
+          )}
           <button
             onClick={handleCancel}
             disabled={saving}
@@ -420,6 +626,13 @@ export default function SongSheet() {
             Cancel
           </button>
         </div>
+
+        {/* PDF Import Modal */}
+        <PDFImportModal
+          isOpen={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          onImport={handleImport}
+        />
 
         {/* Editable Title */}
         <div className="mb-6">
@@ -471,6 +684,40 @@ export default function SongSheet() {
     : renderAboveChords(song.lyrics, chords);
 
   const handleBack = () => {
+    // Priority 1: Check sessionStorage first (most reliable, persists across navigation)
+    let referrer = null;
+    if (id) {
+      const storageKey = `song_referrer_${id}`;
+      referrer = sessionStorage.getItem(storageKey);
+    }
+    
+    // Priority 2: Check location.state (set when navigating from edit mode)
+    if (!referrer && location.state?.referrer) {
+      referrer = location.state.referrer;
+    }
+    
+    // Priority 3: Check our ref (original referrer when song was first opened)
+    if (!referrer && originalReferrerRef.current) {
+      referrer = originalReferrerRef.current;
+    }
+    
+    // Safety check: never navigate to edit mode
+    if (referrer && referrer.includes('/edit')) {
+      console.warn('[SongSheet] handleBack - referrer points to edit mode, using fallback');
+      referrer = null;
+    }
+    
+    console.log('[SongSheet] handleBack - referrer:', referrer, 'location.state:', location.state, 'originalReferrerRef:', originalReferrerRef.current, 'sessionStorage:', id ? sessionStorage.getItem(`song_referrer_${id}`) : 'no id');
+    
+    if (referrer) {
+      // Clean up sessionStorage when navigating away
+      if (id) {
+        sessionStorage.removeItem(`song_referrer_${id}`);
+      }
+      navigate(referrer);
+      return;
+    }
+    
     // If we're in a group context, go back to the group songs tab
     if (groupId) {
       navigate(`/groups/${groupId}?tab=songs`);
@@ -481,12 +728,8 @@ export default function SongSheet() {
       navigate(`/songbooks/${songbookId}`);
       return;
     }
-    // Try to go back in browser history, fallback to songs list
-    if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate('/songs');
-    }
+    // Fallback: go to songs list
+    navigate('/songs');
   };
 
   return (
@@ -730,11 +973,47 @@ export default function SongSheet() {
                       <button
                         onClick={() => {
                           // Preserve query parameters when navigating to edit mode
+                          // Also store the referrer so we can go back to the original page
                           const params = new URLSearchParams();
                           if (songbookId) params.set('songbook', songbookId);
                           if (groupId) params.set('group', groupId);
                           const queryString = params.toString();
-                          navigate(`/songs/${id}/edit${queryString ? `?${queryString}` : ''}`);
+                          
+                          // Determine the referrer: where should we go back to?
+                          // Check sessionStorage first (most reliable)
+                          let referrer = null;
+                          if (id) {
+                            const storageKey = `song_referrer_${id}`;
+                            referrer = sessionStorage.getItem(storageKey);
+                          }
+                          
+                          // If not in sessionStorage, check location.state or ref
+                          if (!referrer) {
+                            referrer = location.state?.referrer || originalReferrerRef.current;
+                          }
+                          
+                          // If still not found, infer from query params
+                          if (!referrer) {
+                            if (groupId) {
+                              referrer = `/groups/${groupId}?tab=songs`;
+                            } else if (songbookId) {
+                              referrer = `/songbooks/${songbookId}`;
+                            } else {
+                              // No context, so go back to songs list
+                              referrer = '/songs';
+                            }
+                          }
+                          
+                          // Always store in sessionStorage for persistence
+                          if (id && referrer) {
+                            sessionStorage.setItem(`song_referrer_${id}`, referrer);
+                          }
+                          
+                          console.log('[SongSheet] Edit button - referrer:', referrer, 'location.state:', location.state, 'originalReferrerRef:', originalReferrerRef.current);
+                          
+                          navigate(`/songs/${id}/edit${queryString ? `?${queryString}` : ''}`, {
+                            state: { referrer },
+                          });
                           setMenuOpen(false);
                         }}
                         className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
@@ -859,10 +1138,13 @@ export default function SongSheet() {
           userGroups={
             (() => {
               // Try to get groups from the relation first
-              let groups = groupsData?.groupMembers
-                ?.map(gm => gm?.group)
-                .filter(Boolean)
-                .filter(group => group && group.id) || [];
+              const groupMembersList = groupsData?.data?.groupMembers || [];
+              let groups = Array.isArray(groupMembersList)
+                ? groupMembersList
+                    .map(gm => gm?.group)
+                    .filter(Boolean)
+                    .filter(group => group && group.id)
+                : [];
               
               // Fallback: if relation isn't populated, use direct groups query
               if (groups.length === 0 && directGroupsData?.groups) {

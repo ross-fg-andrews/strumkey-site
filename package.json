@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "postinstall": "mkdir -p public && cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/pdf.worker.min.mjs || true",
+    "dev": "node scripts/dev.js",
+    "dev:clean": "node scripts/dev.js --clean",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
@@ -12,15 +14,19 @@
     "sync-perms": "npx instant-cli@latest push perms --app $(grep VITE_INSTANTDB_APP_ID .env | cut -d '=' -f2) -y",
     "sync-all": "npx instant-cli@latest push all --app $(grep VITE_INSTANTDB_APP_ID .env | cut -d '=' -f2) -y",
     "watch-sync": "node scripts/watch-sync.js",
-    "clear-groups": "npx tsx scripts/clear-groups.ts"
+    "clear-groups": "npx tsx scripts/clear-groups.ts",
+    "clean:cache": "rm -rf node_modules/.vite .vite",
+    "clean:all": "npm run clean:cache && rm -rf dist node_modules/.cache"
   },
   "dependencies": {
     "@instantdb/admin": "^0.22.96",
     "@instantdb/react": "^0.22.96",
     "jspdf": "^2.5.1",
+    "pdfjs-dist": "^5.4.530",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.20.0"
+    "react-router-dom": "^6.20.0",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",
