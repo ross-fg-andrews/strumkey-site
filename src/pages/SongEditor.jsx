@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { parseLyricsWithChords, lyricsWithChordsToText } from '../utils/lyrics-helpers';
+import { parseLyricsWithChords, lyricsWithChordsToText, extractCustomChords, buildEmbeddedChordsData } from '../utils/lyrics-helpers';
 import { createSong, updateSong } from '../db/mutations';
-import { useSong } from '../db/queries';
+import { useSong, usePersonalChords, useMainLibraryChords } from '../db/queries';
 import ChordAutocomplete from '../components/ChordAutocomplete';
 import { importSongFromPDF } from '../utils/pdf-parser';
 
@@ -21,9 +21,19 @@ export default function SongEditor() {
 
   const isEditing = !!id;
 
+  // Instrument and tuning settings
+  const instrument = 'ukulele';
+  const tuning = 'ukulele_standard';
+
   // Load song data when editing
   const { data: songData, error: songError } = useSong(isEditing ? id : null);
   const song = songData?.songs?.[0];
+
+  // Get personal and main library chords for embedding logic
+  const { data: personalChordsData } = usePersonalChords(user?.id, instrument, tuning);
+  const { data: mainLibraryChordsData } = useMainLibraryChords(instrument, tuning);
+  const personalChords = personalChordsData?.chords || [];
+  const mainLibraryChords = mainLibraryChordsData?.chords || [];
 
   useEffect(() => {
     if (isEditing && song) {
@@ -64,6 +74,22 @@ export default function SongEditor() {
       // InstantDB requires a non-null value, so use "[]" as default
       const chordsJson = chords && chords.length > 0 ? JSON.stringify(chords) : '[]';
 
+      // Extract custom chords (not in main library) and build embedded chords data
+      const customChordNames = extractCustomChords(chords, instrument, tuning, {
+        mainLibraryChords,
+        personalChords,
+      });
+      
+      // Build embedded chords data for personal library chords only
+      const embeddedChords = buildEmbeddedChordsData(
+        customChordNames,
+        personalChords,
+        instrument,
+        tuning
+      );
+      
+      const embeddedChordsJson = embeddedChords.length > 0 ? JSON.stringify(embeddedChords) : null;
+
       if (isEditing) {
         // Update existing song
         await updateSong(id, {
@@ -71,6 +97,7 @@ export default function SongEditor() {
           lyrics,
           artist,
           chords: chordsJson,
+          embeddedChords: embeddedChordsJson,
         });
         // Navigate to the song view after updating
         navigate(`/songs/${id}`);
@@ -81,6 +108,7 @@ export default function SongEditor() {
           lyrics,
           artist,
           chords: chordsJson,
+          embeddedChords: embeddedChordsJson,
           createdBy: user.id,
         });
         // Wait a bit longer to ensure InstantDB has synced the new song
@@ -120,7 +148,7 @@ export default function SongEditor() {
   // Show loading state when editing and song is not yet loaded
   if (isEditing && !song && !songError) {
     return (
-      <div className="max-w-4xl mx-auto">
+      <div>
         <p>Loading song...</p>
       </div>
     );
@@ -129,7 +157,7 @@ export default function SongEditor() {
   // Show error state if song failed to load
   if (isEditing && songError) {
     return (
-      <div className="max-w-4xl mx-auto">
+      <div>
         <p className="text-red-600">Error loading song: {songError.message || 'Unknown error'}</p>
         <button
           onClick={() => navigate('/home')}
@@ -196,7 +224,7 @@ export default function SongEditor() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div>
       <div className="flex items-center gap-4 mb-4">
         <button
           onClick={handleBack}
@@ -300,6 +328,9 @@ export default function SongEditor() {
             rows={20}
             className="input font-mono"
             placeholder="Paste lyrics here...&#10;Press / to add chords"
+            userId={user?.id}
+            instrument={instrument}
+            tuning={tuning}
           />
         </div>
 

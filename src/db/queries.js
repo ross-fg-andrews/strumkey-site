@@ -411,6 +411,77 @@ export function useAllChords() {
   return result;
 }
 
+// Get personal library chords for a user
+export function usePersonalChords(userId, instrument = 'ukulele', tuning = 'ukulele_standard') {
+  // Always call hooks unconditionally to satisfy React's rules of hooks
+  const { data, error } = db.useQuery({
+    chords: {
+      $: {
+        where: userId
+          ? {
+              libraryType: 'personal',
+              createdBy: userId,
+              instrument,
+              tuning,
+            }
+          : {
+              // Impossible condition when no userId
+              libraryType: 'personal',
+              createdBy: '',
+              instrument,
+              tuning,
+            },
+        order: { name: 'asc' },
+      },
+    },
+  });
+
+  if (!userId) {
+    return { data: { chords: [] }, error: null };
+  }
+
+  return { data, error };
+}
+
+// Get main library chords from database (user-contributed)
+export function useMainLibraryChords(instrument = 'ukulele', tuning = 'ukulele_standard') {
+  const { data, error } = db.useQuery({
+    chords: {
+      $: {
+        where: {
+          libraryType: 'main',
+          instrument,
+          tuning,
+        },
+        order: { name: 'asc' },
+      },
+    },
+  });
+
+  return { data, error };
+}
+
+// Get all database chords (main + personal) for a user
+export function useAllDatabaseChords(userId, instrument = 'ukulele', tuning = 'ukulele_standard') {
+  const mainChords = useMainLibraryChords(instrument, tuning);
+  const personalChords = usePersonalChords(userId, instrument, tuning);
+
+  const allChords = [
+    ...(mainChords.data?.chords || []),
+    ...(personalChords.data?.chords || []),
+  ];
+
+  // Sort by name
+  const sortedChords = allChords.sort((a, b) => {
+    return (a.name || '').localeCompare(b.name || '');
+  });
+
+  return {
+    data: { chords: sortedChords },
+    error: mainChords.error || personalChords.error,
+  };
+}
+
 // Get a single song by ID
 export function useSong(songId) {
   // Always call hooks unconditionally to satisfy React's rules of hooks

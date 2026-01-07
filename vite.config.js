@@ -17,7 +17,7 @@ export default defineConfig({
     // Improve HMR reliability
     hmr: {
       overlay: true, // Show error overlay for better debugging
-      clientPort: 3000, // Ensure HMR connects to correct port
+      // Don't hardcode clientPort - let it match the server port automatically
     },
     // Ensure files are always fresh
     fs: {

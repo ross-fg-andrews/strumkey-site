@@ -1,3 +1,5 @@
+import { CHORD_SEED_DATA } from '../data/chord-seed';
+
 /**
  * Parse lyrics text into lines and extract chords
  * Input: "Amazing [C]grace how [G]sweet the [Am]sound\nThat saved a [F]wretch like [C]me"
@@ -12,23 +14,42 @@ export function parseLyricsWithChords(text) {
   let chordId = 0;
 
   const cleanLines = lines.map((line, lineIndex) => {
-    // Match [ChordName] patterns
+    // Match [ChordName] or [ChordName|variation:frets:libraryType] patterns
+    // Backward compatible: [ChordName] still works
     const chordPattern = /\[([^\]]+)\]/g;
     let match;
     let removedLength = 0; // Track cumulative length of removed chord markers
-    const cleanLine = line.replace(chordPattern, (matchStr, chordName, offset) => {
+    const cleanLine = line.replace(chordPattern, (matchStr, chordContent, offset) => {
       // offset is the position in the ORIGINAL string
       // We need the position in the CLEANED string (after removing previous markers)
       const position = offset - removedLength;
       
-      // Trim chord name to remove any leading/trailing whitespace
-      const trimmedChordName = chordName.trim();
+      // Parse chord content: could be "ChordName" or "ChordName|variation:frets:libraryType"
+      let chordName = chordContent.trim();
+      let variation = 'standard';
+      let frets = null;
+      let libraryType = null;
+      
+      // Check if we have variation info (format: ChordName|variation:frets:libraryType)
+      if (chordName.includes('|')) {
+        const parts = chordName.split('|');
+        chordName = parts[0].trim();
+        if (parts[1]) {
+          const metaParts = parts[1].split(':');
+          if (metaParts[0]) variation = metaParts[0].trim() || 'standard';
+          if (metaParts[1]) frets = metaParts[1].trim() || null;
+          if (metaParts[2]) libraryType = metaParts[2].trim() || null;
+        }
+      }
       
       chords.push({
         id: `chord-${chordId++}`,
         lineIndex,
         position,
-        chord: trimmedChordName,
+        chord: chordName,
+        variation,
+        ...(frets && { frets }),
+        ...(libraryType && { libraryType }),
       });
       removedLength += matchStr.length; // Track how much we've removed
       return ''; // Remove chord marker from text
@@ -265,10 +286,161 @@ export function removeChord(chords, chordId) {
 /**
  * Convert lyrics and chords back to text format with [Chord] markers
  * This is useful for editing - converts stored format back to editable text
+ * Includes variation info if present: [ChordName|variation:frets:libraryType]
  */
 export function lyricsWithChordsToText(lyrics, chords = []) {
   const lines = lyrics.split('\n');
-  const renderedLines = renderInlineChords(lyrics, chords);
-  return renderedLines.join('\n');
+  
+  return lines.map((line, lineIndex) => {
+    const lineChords = chords
+      .filter(c => c.lineIndex === lineIndex)
+      .sort((a, b) => a.position - b.position);
+
+    if (lineChords.length === 0) {
+      return line;
+    }
+
+    let result = [];
+    let lastIndex = 0;
+
+    lineChords.forEach(({ position, chord, variation, frets, libraryType }) => {
+      // Add text before chord
+      if (position > lastIndex) {
+        result.push(line.substring(lastIndex, position));
+      }
+      
+      // Build chord marker with variation info if present
+      let chordMarker = `[${chord}`;
+      if (variation && variation !== 'standard') {
+        chordMarker += `|${variation}`;
+        if (frets) chordMarker += `:${frets}`;
+        if (libraryType) chordMarker += `:${libraryType}`;
+      } else if (frets || libraryType) {
+        // Even if variation is standard, include frets/libraryType if available
+        chordMarker += `|standard`;
+        if (frets) chordMarker += `:${frets}`;
+        if (libraryType) chordMarker += `:${libraryType}`;
+      }
+      chordMarker += ']';
+      
+      result.push(chordMarker);
+      lastIndex = position;
+    });
+
+    // Add remaining text
+    if (lastIndex < line.length) {
+      result.push(line.substring(lastIndex));
+    }
+
+    return result.join('');
+  }).join('\n');
+}
+
+/**
+ * Check if a chord exists in the main library (static or database)
+ * @param {string} chordName - Chord name to check
+ * @param {string} instrument - Instrument type
+ * @param {string} tuning - Tuning identifier
+ * @param {Object} options - Additional options
+ * @param {Array} options.mainLibraryChords - Array of main library chord objects (from database)
+ * @returns {boolean} True if chord exists in main library
+ */
+export function isChordInMainLibrary(chordName, instrument, tuning, options = {}) {
+  const { mainLibraryChords = [] } = options;
+  
+  // Check static seed data (imported at top level)
+  try {
+    const inStatic = CHORD_SEED_DATA.some(c => 
+      c.name === chordName &&
+      c.instrument === instrument &&
+      c.tuning === tuning
+    );
+    if (inStatic) return true;
+  } catch (e) {
+    console.warn('Error checking static library:', e);
+  }
+  
+  // Check database main library
+  const inDatabase = mainLibraryChords.some(c =>
+    c.name === chordName &&
+    c.instrument === instrument &&
+    c.tuning === tuning &&
+    c.libraryType === 'main'
+  );
+  
+  return inDatabase;
+}
+
+/**
+ * Extract custom chords (chords not in main library) from a song
+ * @param {Array} chords - Array of chord objects from song
+ * @param {string} instrument - Instrument type
+ * @param {string} tuning - Tuning identifier
+ * @param {Object} options - Additional options
+ * @param {Array} options.mainLibraryChords - Array of main library chord objects
+ * @param {Array} options.personalChords - Array of personal library chord objects
+ * @returns {Array<string>} Array of chord names that are custom (not in main library)
+ */
+export function extractCustomChords(chords, instrument, tuning, options = {}) {
+  const { mainLibraryChords = [], personalChords = [] } = options;
+  
+  if (!chords || chords.length === 0) return [];
+  
+  const customChordNames = new Set();
+  
+  chords.forEach(chord => {
+    if (chord.chord) {
+      const chordName = chord.chord.trim();
+      if (chordName) {
+        // Check if it's in main library
+        const inMainLibrary = isChordInMainLibrary(chordName, instrument, tuning, { mainLibraryChords });
+        
+        if (!inMainLibrary) {
+          customChordNames.add(chordName);
+        }
+      }
+    }
+  });
+  
+  return Array.from(customChordNames);
+}
+
+/**
+ * Build embedded chords data for personal library chords
+ * @param {Array<string>} customChordNames - Array of custom chord names
+ * @param {Array} personalChords - Array of personal library chord objects
+ * @param {string} instrument - Instrument type
+ * @param {string} tuning - Tuning identifier
+ * @returns {Array} Array of embedded chord objects [{name, frets, instrument, tuning}]
+ */
+export function buildEmbeddedChordsData(customChordNames, personalChords, instrument, tuning) {
+  if (!customChordNames || customChordNames.length === 0) {
+    return [];
+  }
+  
+  const embeddedChords = [];
+  const personalChordMap = new Map();
+  
+  // Create a map of personal chords by name for quick lookup
+  personalChords.forEach(chord => {
+    if (chord.libraryType === 'personal' && chord.instrument === instrument && chord.tuning === tuning) {
+      personalChordMap.set(chord.name, chord);
+    }
+  });
+  
+  // Build embedded chords array for custom chords that are in personal library
+  customChordNames.forEach(chordName => {
+    const personalChord = personalChordMap.get(chordName);
+    if (personalChord && personalChord.frets) {
+      embeddedChords.push({
+        name: chordName,
+        frets: personalChord.frets,
+        instrument: personalChord.instrument || instrument,
+        tuning: personalChord.tuning || tuning,
+      });
+    }
+  });
+  
+  return embeddedChords;
 }
 

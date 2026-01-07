@@ -14,7 +14,7 @@ import { id } from '@instantdb/react';
  * @returns {Promise<string>} Promise that resolves with the new song ID
  */
 export async function createSong(songData) {
-  const { title, artist, lyrics, chords, createdBy, parentSongId } = songData;
+  const { title, artist, lyrics, chords, createdBy, parentSongId, embeddedChords } = songData;
   
   // Generate song ID first so we can return it
   const songId = id();
@@ -31,6 +31,7 @@ export async function createSong(songData) {
       lyrics: lyrics, // Don't trim - preserve line breaks and formatting
       artist: artist?.trim() || null,
       chords: chordsValue,
+      embeddedChords: embeddedChords || null,
       createdBy,
       parentSongId: parentSongId || null,
       createdAt: Date.now(),
@@ -73,14 +74,21 @@ export async function updateSong(songId, updates) {
         : '[]')
     : '[]';
   
+  const updateData = {
+    title: updates.title?.trim(),
+    lyrics: updates.lyrics, // Don't trim - preserve line breaks and formatting
+    artist: updates.artist?.trim() || null,
+    chords: chordsValue,
+    updatedAt: Date.now(),
+  };
+  
+  // Include embeddedChords if provided
+  if (updates.embeddedChords !== undefined) {
+    updateData.embeddedChords = updates.embeddedChords || null;
+  }
+  
   return db.transact(
-    db.tx.songs[songId].update({
-      title: updates.title?.trim(),
-      lyrics: updates.lyrics, // Don't trim - preserve line breaks and formatting
-      artist: updates.artist?.trim() || null,
-      chords: chordsValue,
-      updatedAt: Date.now(),
-    })
+    db.tx.songs[songId].update(updateData)
   );
 }
 
@@ -417,6 +425,48 @@ export async function createChords(chords) {
   
   return db.transact(
     chords.map(chord => createChordBuilder(chord))
+  );
+}
+
+/**
+ * Create a personal library chord
+ * @param {Object} chordData - Chord data (name, frets, instrument, tuning, variation)
+ * @param {string} userId - User ID who owns the chord
+ * @returns {Promise} Transaction promise
+ */
+export async function createPersonalChord(chordData, userId) {
+  const { name, frets, instrument, tuning, variation = 'standard' } = chordData;
+  
+  return db.transact(
+    db.tx.chords[id()].update({
+      name: name.trim(),
+      frets,
+      instrument,
+      tuning,
+      variation,
+      libraryType: 'personal',
+      createdBy: userId,
+    })
+  );
+}
+
+/**
+ * Create a main library chord (user-contributed)
+ * @param {Object} chordData - Chord data (name, frets, instrument, tuning, variation)
+ * @returns {Promise} Transaction promise
+ */
+export async function createMainLibraryChord(chordData) {
+  const { name, frets, instrument, tuning, variation = 'standard' } = chordData;
+  
+  return db.transact(
+    db.tx.chords[id()].update({
+      name: name.trim(),
+      frets,
+      instrument,
+      tuning,
+      variation,
+      libraryType: 'main',
+    })
   );
 }
 

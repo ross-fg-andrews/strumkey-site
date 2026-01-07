@@ -21,6 +21,8 @@ const _schema = i.schema({
       name: i.string().indexed(),
       tuning: i.string(),
       variation: i.string(),
+      libraryType: i.string().optional(),
+      createdBy: i.string().optional(),
     }),
     groupMembers: i.entity({
       groupId: i.string(),
@@ -90,6 +92,7 @@ const _schema = i.schema({
       parentSongId: i.string().optional(),
       title: i.string(),
       updatedAt: i.number(),
+      embeddedChords: i.string().optional(),
     }),
     songShares: i.entity({
       groupId: i.string(),
