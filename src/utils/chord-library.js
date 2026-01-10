@@ -9,7 +9,8 @@ import { CHORD_SEED_DATA } from '../data/chord-seed';
 
 /**
  * Find a chord by name, instrument, and tuning
- * Checks multiple sources in order: static seed, database main library, personal library, embedded chords
+ * Checks multiple sources in order: embedded chords, personal library, main library, static seed
+ * This prioritizes custom/user chords over standard library chords
  * @param {string} chordName - Chord name (e.g., "C", "Am", "G7")
  * @param {string} instrument - Instrument type (e.g., "ukulele")
  * @param {string} tuning - Tuning identifier (e.g., "ukulele_standard")
@@ -30,55 +31,23 @@ export function findChord(
   
   const { databaseChords = [], embeddedChords = [] } = options;
   
-  // 1. Check static seed data first
-  let chord = CHORD_SEED_DATA.find(c => 
+  // 1. Check embedded chords first (highest priority - song-specific custom chords)
+  let chord = embeddedChords.find(c => 
     c.name === chordName &&
     c.instrument === instrument &&
-    c.tuning === tuning &&
-    c.variation === variation
+    c.tuning === tuning
   );
   
-  // Fallback to standard variation if specific variation not found
-  if (!chord && variation !== 'standard') {
-    chord = CHORD_SEED_DATA.find(c => 
-      c.name === chordName &&
-      c.instrument === instrument &&
-      c.tuning === tuning &&
-      c.variation === 'standard'
-    );
-  }
-  
-  // Fallback to case-insensitive match in static data
+  // Case-insensitive fallback for embedded chords
   if (!chord) {
-    chord = CHORD_SEED_DATA.find(c => 
+    chord = embeddedChords.find(c => 
       c.name.toLowerCase() === chordName.toLowerCase() &&
       c.instrument === instrument &&
       c.tuning === tuning
     );
   }
   
-  // 2. Check database chords (main library)
-  if (!chord && databaseChords.length > 0) {
-    chord = databaseChords.find(c => 
-      c.name === chordName &&
-      c.instrument === instrument &&
-      c.tuning === tuning &&
-      (c.variation === variation || (!c.variation && variation === 'standard')) &&
-      c.libraryType === 'main'
-    );
-    
-    // Case-insensitive fallback
-    if (!chord) {
-      chord = databaseChords.find(c => 
-        c.name.toLowerCase() === chordName.toLowerCase() &&
-        c.instrument === instrument &&
-        c.tuning === tuning &&
-        c.libraryType === 'main'
-      );
-    }
-  }
-  
-  // 3. Check personal library chords
+  // 2. Check personal library chords (user's custom chords take precedence)
   if (!chord && databaseChords.length > 0) {
     chord = databaseChords.find(c => 
       c.name === chordName &&
@@ -99,17 +68,49 @@ export function findChord(
     }
   }
   
-  // 4. Check embedded chords (from song)
-  if (!chord && embeddedChords.length > 0) {
-    chord = embeddedChords.find(c => 
+  // 3. Check database chords (main library)
+  if (!chord && databaseChords.length > 0) {
+    chord = databaseChords.find(c => 
       c.name === chordName &&
       c.instrument === instrument &&
-      c.tuning === tuning
+      c.tuning === tuning &&
+      (c.variation === variation || (!c.variation && variation === 'standard')) &&
+      c.libraryType === 'main'
     );
     
     // Case-insensitive fallback
     if (!chord) {
-      chord = embeddedChords.find(c => 
+      chord = databaseChords.find(c => 
+        c.name.toLowerCase() === chordName.toLowerCase() &&
+        c.instrument === instrument &&
+        c.tuning === tuning &&
+        c.libraryType === 'main'
+      );
+    }
+  }
+  
+  // 4. Check static seed data last (lowest priority)
+  if (!chord) {
+    chord = CHORD_SEED_DATA.find(c => 
+      c.name === chordName &&
+      c.instrument === instrument &&
+      c.tuning === tuning &&
+      c.variation === variation
+    );
+    
+    // Fallback to standard variation if specific variation not found
+    if (!chord && variation !== 'standard') {
+      chord = CHORD_SEED_DATA.find(c => 
+        c.name === chordName &&
+        c.instrument === instrument &&
+        c.tuning === tuning &&
+        c.variation === 'standard'
+      );
+    }
+    
+    // Fallback to case-insensitive match in static data
+    if (!chord) {
+      chord = CHORD_SEED_DATA.find(c => 
         c.name.toLowerCase() === chordName.toLowerCase() &&
         c.instrument === instrument &&
         c.tuning === tuning
@@ -135,60 +136,57 @@ export function getAllChords(instrument = 'ukulele', tuning = 'ukulele_standard'
 
 /**
  * Get all variations of a chord for an instrument/tuning
- * Includes static seed data and database chords (main + personal)
+ * Includes chords from static seed, database main library, and personal library
  * @param {string} chordName - Chord name
  * @param {string} instrument - Instrument type
  * @param {string} tuning - Tuning identifier
  * @param {Object} options - Additional options
  * @param {Array} options.databaseChords - Array of database chord objects (main + personal)
- * @returns {Array} Array of chord objects with different variations, including libraryType
+ * @returns {Array} Array of chord objects with different variations
  */
 export function getChordVariations(chordName, instrument = 'ukulele', tuning = 'ukulele_standard', options = {}) {
   const { databaseChords = [] } = options;
   
+  const variations = [];
+  
   // Get static seed variations
-  const staticVariations = CHORD_SEED_DATA
-    .filter(c => 
-      c.name === chordName &&
-      c.instrument === instrument &&
-      c.tuning === tuning
-    )
-    .map(c => ({
-      ...c,
-      libraryType: 'static',
-    }));
+  const staticVariations = CHORD_SEED_DATA.filter(c => 
+    c.name === chordName &&
+    c.instrument === instrument &&
+    c.tuning === tuning
+  );
+  variations.push(...staticVariations);
   
-  // Get database variations (main + personal)
-  const dbVariations = databaseChords
-    .filter(c => 
-      c.name === chordName &&
-      c.instrument === instrument &&
-      c.tuning === tuning
-    )
-    .map(c => ({
-      ...c,
-      libraryType: c.libraryType || 'main', // Default to 'main' if not specified
-    }));
+  // Get database variations (main library)
+  const mainVariations = databaseChords.filter(c => 
+    c.name === chordName &&
+    c.instrument === instrument &&
+    c.tuning === tuning &&
+    c.libraryType === 'main'
+  );
+  variations.push(...mainVariations);
   
-  // Combine all variations
-  // Prefer database over static for same variation (database is more up-to-date)
-  const variationMap = new Map();
+  // Get personal library variations
+  const personalVariations = databaseChords.filter(c => 
+    c.name === chordName &&
+    c.instrument === instrument &&
+    c.tuning === tuning &&
+    c.libraryType === 'personal'
+  );
+  variations.push(...personalVariations);
   
-  // Add static variations first
-  staticVariations.forEach(chord => {
-    const key = chord.variation || 'standard';
-    if (!variationMap.has(key)) {
-      variationMap.set(key, chord);
+  // Deduplicate by frets (keep unique fret patterns)
+  const seenFrets = new Set();
+  const uniqueVariations = variations.filter(chord => {
+    const fretsKey = `${chord.frets}-${chord.instrument}-${chord.tuning}`;
+    if (seenFrets.has(fretsKey)) {
+      return false;
     }
+    seenFrets.add(fretsKey);
+    return true;
   });
   
-  // Add database variations (will override static if same variation)
-  dbVariations.forEach(chord => {
-    const key = chord.variation || 'standard';
-    variationMap.set(key, chord);
-  });
-  
-  return Array.from(variationMap.values());
+  return uniqueVariations;
 }
 
 /**

@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { getChordNames, getChordVariations } from '../utils/chord-library';
+import { getChordNames, findChord, getChordVariations, getAllChords } from '../utils/chord-library';
 import { useAllDatabaseChords } from '../db/queries';
 import CustomChordModal from './CustomChordModal';
 import { createPersonalChord } from '../db/mutations';
+import ChordDiagram from './ChordDiagram';
 
 /**
  * Extract unique chords from lyrics text that are in [ChordName] format
@@ -89,67 +90,186 @@ export default function ChordAutocomplete({
   const textareaRef = useRef(null);
   const dropdownRef = useRef(null);
   const measureRef = useRef(null);
+  const insertPositionRef = useRef(0);
   const [showDropdown, setShowDropdown] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [insertPosition, setInsertPosition] = useState(0);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
   const [showCustomChordModal, setShowCustomChordModal] = useState(false);
+  // Track selected variations for chords (chordName -> variation)
+  const [selectedVariations, setSelectedVariations] = useState(new Map());
 
   // Get database chords (main + personal) if userId provided
   const { data: dbChordsData } = useAllDatabaseChords(userId, instrument, tuning);
   const dbChords = dbChordsData?.chords || [];
+  
+  // Create a map of personal chord names for quick lookup
+  const personalChordNames = useMemo(() => {
+    return new Set(
+      dbChords
+        .filter(c => c.libraryType === 'personal')
+        .map(c => c.name)
+    );
+  }, [dbChords]);
+
+  // Create a map of chord data (name -> chord object) for quick lookup
+  const chordDataMap = useMemo(() => {
+    const map = new Map();
+    
+    // Add database chords
+    dbChords.forEach(chord => {
+      const key = chord.name;
+      if (!map.has(key) || chord.libraryType === 'personal') {
+        map.set(key, chord);
+      }
+    });
+    
+    return map;
+  }, [dbChords]);
+
+  // Get chord data for a chord name, using selected variation if available
+  const getChordData = (chordName) => {
+    const selectedVariation = selectedVariations.get(chordName) || 'standard';
+    
+    // Try to find chord with selected variation
+    let chord = findChord(chordName, instrument, tuning, selectedVariation, {
+      databaseChords: dbChords,
+    });
+    
+    // If not found with selected variation, try standard
+    if (!chord && selectedVariation !== 'standard') {
+      chord = findChord(chordName, instrument, tuning, 'standard', {
+        databaseChords: dbChords,
+      });
+    }
+    
+    return chord;
+  };
 
   // Extract chords already used in the song
   const usedChords = useMemo(() => extractUsedChords(value), [value]);
 
-  // Get available chord names from the library (static + database)
-  const availableChordNames = useMemo(() => {
-    const staticChords = getChordNames(instrument, tuning);
-    const dbChordNames = dbChords.map(c => c.name);
-    // Combine and deduplicate
-    return [...new Set([...staticChords, ...dbChordNames])].sort((a, b) => a.localeCompare(b));
-  }, [instrument, tuning, dbChords]);
-
-  // Get all variations for each chord name, grouped by name
-  const chordVariationsMap = useMemo(() => {
-    const map = new Map();
-    const allChordNames = [...new Set([...usedChords, ...availableChordNames])];
+  // Get all chord variations (not just unique names) from all sources
+  // Keep ALL variations with different frets, even if they have the same name
+  // IMPORTANT: Always keep static chords, even if database has same name+frets
+  // This allows users to see both their custom version and the standard version
+  const allChordVariations = useMemo(() => {
+    const variations = [];
     
-    allChordNames.forEach(chordName => {
-      const variations = getChordVariations(chordName, instrument, tuning, {
-        databaseChords: dbChords,
-      });
-      if (variations.length > 0) {
-        map.set(chordName, variations);
-      }
+    // Get static seed chords FIRST - always include all of them
+    const staticChords = getAllChords(instrument, tuning);
+    // Add all static chords
+    staticChords.forEach(c => {
+      variations.push({ ...c, source: 'static' });
     });
     
-    // Debug: log a sample to verify variations are being found
-    if (map.size > 0) {
-      const sampleChord = Array.from(map.keys())[0];
-      const sampleVariations = map.get(sampleChord);
-      console.log(`[ChordAutocomplete] Sample chord "${sampleChord}" has ${sampleVariations.length} variation(s):`, sampleVariations);
-    }
+    // Get database chords (main + personal)
+    // Add ALL of them as separate entries, even if they have same name+frets as static
+    // This way users can see both their custom version and standard version
+    const dbChordsList = dbChords
+      .filter(c => c.instrument === instrument && c.tuning === tuning)
+      .map(c => ({ ...c, source: c.libraryType === 'personal' ? 'personal' : 'main' }));
     
-    return map;
-  }, [usedChords, availableChordNames, instrument, tuning, dbChords]);
+    // Add all database chords - no deduplication, we want to show all variations
+    dbChordsList.forEach(dbChord => {
+      variations.push(dbChord);
+    });
+    
+    return variations;
+  }, [instrument, tuning, dbChords]);
+
+  // Get unique chord names for filtering
+  const availableChordNames = useMemo(() => {
+    const names = new Set(allChordVariations.map(c => c.name));
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [allChordVariations]);
+
+  // Get used chord names
+  const usedChordNames = useMemo(() => {
+    return [...new Set(usedChords)].sort((a, b) => a.localeCompare(b));
+  }, [usedChords]);
+
+  // Combine: used chord names first, then available chord names (excluding duplicates)
+  const allChords = useMemo(() => {
+    const usedSet = new Set(usedChordNames);
+    const libraryFiltered = availableChordNames.filter(c => !usedSet.has(c));
+    return [...usedChordNames, ...libraryFiltered];
+  }, [usedChordNames, availableChordNames]);
+
+  // Get all variations for a chord name
+  const getVariationsForName = useMemo(() => {
+    return (chordName) => {
+      return allChordVariations.filter(c => c.name === chordName);
+    };
+  }, [allChordVariations]);
 
   // Filter chord names based on query
   const filteredChordNames = useMemo(() => {
-    const allNames = [...new Set([...usedChords, ...availableChordNames])];
-    return filterChords(allNames, query);
-  }, [usedChords, availableChordNames, query]);
+    return filterChords(allChords, query);
+  }, [allChords, query]);
 
-  // Separate used and library chords in filtered results
+  // Elements (headings and instructions) - always available
+  const elements = [
+    { type: 'heading', label: 'Heading', icon: '📝' },
+    { type: 'instruction', label: 'Instruction', icon: '💡' },
+  ];
+
+  // Filter elements based on query
+  const filteredElements = useMemo(() => {
+    if (!query) return elements;
+    const lowerQuery = query.toLowerCase();
+    return elements.filter(el => 
+      el.label.toLowerCase().includes(lowerQuery) ||
+      el.type.toLowerCase().includes(lowerQuery)
+    );
+  }, [query]);
+
+  // Separate used and library chord names in filtered results
+  const usedFilteredNames = useMemo(() => {
+    return filterChords(usedChordNames, query);
+  }, [usedChordNames, query]);
+
+  const libraryFilteredNames = useMemo(() => {
+    const usedSet = new Set(usedChordNames);
+    return filterChords(availableChordNames.filter(c => !usedSet.has(c)), query);
+  }, [usedChordNames, availableChordNames, query]);
+  
+  // Expand filtered names into chord entries (one per variation)
   const usedFiltered = useMemo(() => {
-    return filterChords(usedChords, query);
-  }, [usedChords, query]);
+    return usedFilteredNames.flatMap(chordName => {
+      const variations = getVariationsForName(chordName);
+      // Return all variations, or a placeholder if none found
+      if (variations.length > 0) {
+        return variations;
+      }
+      // Fallback: try to get chord data using findChord
+      const fallbackChord = findChord(chordName, instrument, tuning, 'standard', {
+        databaseChords: dbChords,
+      });
+      if (fallbackChord) {
+        return [{ ...fallbackChord, source: fallbackChord.libraryType === 'personal' ? 'personal' : 'main' }];
+      }
+      return [{ name: chordName, frets: null }];
+    });
+  }, [usedFilteredNames, getVariationsForName, instrument, tuning, dbChords]);
 
   const libraryFiltered = useMemo(() => {
-    const usedSet = new Set(usedChords);
-    return filterChords(availableChordNames.filter(c => !usedSet.has(c)), query);
-  }, [usedChords, availableChordNames, query]);
+    return libraryFilteredNames.flatMap(chordName => {
+      const variations = getVariationsForName(chordName);
+      // Return all variations, or a placeholder if none found
+      if (variations.length > 0) {
+        return variations;
+      }
+      // Fallback: try to get chord data using findChord
+      const fallbackChord = findChord(chordName, instrument, tuning, 'standard', {
+        databaseChords: dbChords,
+      });
+      if (fallbackChord) {
+        return [{ ...fallbackChord, source: fallbackChord.libraryType === 'personal' ? 'personal' : 'main' }];
+      }
+      return [{ name: chordName, frets: null }];
+    });
+  }, [libraryFilteredNames, getVariationsForName, instrument, tuning, dbChords]);
 
   // Handle custom chord save
   const handleCustomChordSave = async (chordData) => {
@@ -161,67 +281,24 @@ export default function ChordAutocomplete({
       }
       await createPersonalChord(chordData, userId);
       
-      // Insert chord with variation info
-      insertChord(
-        chordData.name,
-        chordData.variation || 'standard',
-        chordData.frets,
-        'personal'
-      );
+      // Insert chord name into song
+      insertChord(chordData.name);
       setShowCustomChordModal(false);
     } catch (error) {
       console.error('Error saving custom chord:', error);
-      alert('Error saving chord. Please try again.');
+      console.error('Error details:', {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+      });
+      alert(`Error saving chord: ${error?.message || 'Unknown error'}. Please try again.`);
     }
   };
 
-  // Build flat list of all variations for keyboard navigation
-  // Order: used chords first, then library chords
-  // Also build a map for quick index lookup
-  const { allVariationsFlat, variationIndexMap } = useMemo(() => {
-    const flat = [];
-    const indexMap = new Map();
-    let currentIndex = 0;
-    
-    // Add used chord variations first
-    usedFiltered.forEach(chordName => {
-      const variations = chordVariationsMap.get(chordName) || [];
-      variations.forEach(variation => {
-        const varKey = `${chordName}|${variation.variation || 'standard'}`;
-        flat.push({
-          chordName,
-          variation: variation.variation || 'standard',
-          frets: variation.frets,
-          libraryType: variation.libraryType || 'static',
-        });
-        indexMap.set(varKey, currentIndex);
-        currentIndex++;
-      });
-    });
-    
-    // Add library chord variations
-    libraryFiltered.forEach(chordName => {
-      const variations = chordVariationsMap.get(chordName) || [];
-      variations.forEach(variation => {
-        const varKey = `${chordName}|${variation.variation || 'standard'}`;
-        flat.push({
-          chordName,
-          variation: variation.variation || 'standard',
-          frets: variation.frets,
-          libraryType: variation.libraryType || 'static',
-        });
-        indexMap.set(varKey, currentIndex);
-        currentIndex++;
-      });
-    });
-    
-    return { allVariationsFlat: flat, variationIndexMap: indexMap };
-  }, [usedFiltered, libraryFiltered, chordVariationsMap]);
-
-  // Reset selected index when filtered chords change
+  // Reset selected index when filtered chords or elements change
   useEffect(() => {
     setSelectedIndex(0);
-  }, [allVariationsFlat.length]);
+  }, [usedFiltered.length, libraryFiltered.length, filteredElements.length]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -255,10 +332,12 @@ export default function ChordAutocomplete({
 
   const handleKeyDown = (e) => {
     if (showDropdown) {
+      const totalItems = filteredElements.length + usedFiltered.length + libraryFiltered.length + 1; // +1 for "Create custom chord"
+      
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setSelectedIndex(prev => 
-          prev < allVariationsFlat.length ? prev + 1 : prev
+          prev < totalItems - 1 ? prev + 1 : prev
         );
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
@@ -266,13 +345,20 @@ export default function ChordAutocomplete({
       } else if (e.key === 'Enter') {
         e.preventDefault();
         // Check if "Create custom chord" is selected (last item)
-        const totalItems = allVariationsFlat.length + 1; // +1 for "Create custom chord"
         if (selectedIndex === totalItems - 1) {
           setShowCustomChordModal(true);
           setShowDropdown(false);
-        } else if (allVariationsFlat[selectedIndex]) {
-          const item = allVariationsFlat[selectedIndex];
-          insertChord(item.chordName, item.variation, item.frets, item.libraryType);
+        } else if (selectedIndex < filteredElements.length) {
+          // Element selected - use insertPositionRef.current directly, just like chords do
+          const element = filteredElements[selectedIndex];
+          insertElement(element.type);
+        } else {
+          // Chord selected
+          const chordIndex = selectedIndex - filteredElements.length;
+          const allFiltered = [...usedFiltered, ...libraryFiltered];
+          if (allFiltered[chordIndex]) {
+            insertChord(allFiltered[chordIndex].name || allFiltered[chordIndex]);
+          }
         }
       } else if (e.key === 'Escape') {
         e.preventDefault();
@@ -303,8 +389,26 @@ export default function ChordAutocomplete({
       e.preventDefault();
       const textarea = textareaRef.current;
       if (textarea) {
-        const cursorPos = textarea.selectionStart;
-        setInsertPosition(cursorPos);
+        // CRITICAL: Read cursor position IMMEDIATELY, before any state updates or focus changes
+        // Use selectionStart which should be accurate even on empty lines
+        // On empty lines, selectionStart should be the position after the previous newline
+        const cursorStart = textarea.selectionStart;
+        const cursorEnd = textarea.selectionEnd;
+        // Use the start position (cursor position, not end of selection)
+        const cursorPos = Math.min(cursorStart, cursorEnd);
+        
+        // Store immediately - this must happen synchronously, before any React state updates
+        insertPositionRef.current = cursorPos;
+        
+        // Debug: log the position and text around it to help diagnose
+        const text = value || '';
+        const before = text.substring(Math.max(0, cursorPos - 10), cursorPos);
+        const after = text.substring(cursorPos, Math.min(text.length, cursorPos + 10));
+        console.log('[ChordAutocomplete] / pressed - cursorPos:', cursorPos, 'text.length:', text.length, 
+          'selectionStart:', cursorStart, 'selectionEnd:', cursorEnd,
+          'before:', JSON.stringify(before), 'after:', JSON.stringify(after));
+        
+        // Now update UI state (this is async but position is already captured in ref)
         setQuery('');
         setSelectedIndex(0);
         setShowDropdown(true);
@@ -324,7 +428,7 @@ export default function ChordAutocomplete({
         // Allow some movement for the query text (but we're not inserting query text)
         // Actually, since we prevent default on typing when dropdown is open,
         // the cursor shouldn't move. But if user clicks elsewhere, it will.
-        if (cursorPos < insertPosition) {
+        if (cursorPos < insertPositionRef.current) {
           setShowDropdown(false);
           setQuery('');
         }
@@ -332,13 +436,18 @@ export default function ChordAutocomplete({
     }
   };
 
-  const insertChord = (chordName, variation = null, frets = null, libraryType = null) => {
+  const insertChord = (chordName) => {
     const textarea = textareaRef.current;
     if (!textarea) return;
 
     const text = value || '';
-    const before = text.substring(0, insertPosition);
-    const after = text.substring(insertPosition);
+    const insertPos = insertPositionRef.current;
+    
+    // Clamp to valid range
+    const validPos = Math.max(0, Math.min(insertPos, text.length));
+    
+    const before = text.substring(0, validPos);
+    const after = text.substring(validPos);
 
     // Get characters around insertion point to determine spacing
     const charBefore = before.length > 0 ? before[before.length - 1] : null;
@@ -367,26 +476,22 @@ export default function ChordAutocomplete({
     }
     // If within word, no spaces are added (both remain empty)
 
-    // Build chord marker with variation info if present
-    let chordMarker = `[${chordName}`;
-    if (variation && variation !== 'standard') {
-      chordMarker += `|${variation}`;
-      if (frets) chordMarker += `:${frets}`;
-      if (libraryType) chordMarker += `:${libraryType}`;
-    } else if (frets || libraryType) {
-      // Even if variation is standard, include frets/libraryType if available
-      chordMarker += `|standard`;
-      if (frets) chordMarker += `:${frets}`;
-      if (libraryType) chordMarker += `:${libraryType}`;
+    // Remember the selected variation for this chord
+    const chordData = getChordData(chordName);
+    if (chordData?.variation) {
+      setSelectedVariations(prev => {
+        const newMap = new Map(prev);
+        newMap.set(chordName, chordData.variation);
+        return newMap;
+      });
     }
-    chordMarker += ']';
 
-    const newText = before + spaceBefore + chordMarker + spaceAfter + after;
+    const newText = before + spaceBefore + `[${chordName}]` + spaceAfter + after;
     onChange({ target: { value: newText } });
 
     // Set cursor position after inserted chord (account for added spaces)
     setTimeout(() => {
-      const newCursorPos = insertPosition + spaceBefore.length + chordMarker.length + spaceAfter.length;
+      const newCursorPos = validPos + spaceBefore.length + chordName.length + 2 + spaceAfter.length; // +2 for "["
       textarea.setSelectionRange(newCursorPos, newCursorPos);
       textarea.focus();
     }, 0);
@@ -395,8 +500,86 @@ export default function ChordAutocomplete({
     setQuery('');
   };
 
-  const handleChordClick = (chordName, variation = null, frets = null, libraryType = null) => {
-    insertChord(chordName, variation, frets, libraryType);
+  const handleChordClick = (chordName) => {
+    insertChord(chordName);
+  };
+
+  const insertElement = (elementType) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    // Get text directly from textarea.value to ensure we have the most current value
+    // This is more reliable than using the value prop which might be stale
+    const text = textarea.value || '';
+    let insertPos = insertPositionRef.current;
+    
+    // Debug: log what we're about to insert
+    console.log('[ChordAutocomplete] insertElement - stored insertPos:', insertPos, 'text.length:', text.length, 
+      'textarea.value.length:', textarea.value?.length, 'value prop length:', (value || '').length,
+      'elementType:', elementType);
+    
+    // IMPORTANT: If the stored position is at the end of text, this might be wrong for empty lines
+    // Try to verify by checking if we're actually at the end of a line
+    // If textarea still has focus, we can also try reading the current position
+    if (insertPos >= text.length && text.length > 0) {
+      console.warn('[ChordAutocomplete] insertElement - WARNING: stored position is at end of text, this might be wrong!');
+      // If textarea has focus, try reading current position as fallback
+      if (document.activeElement === textarea) {
+        const currentPos = textarea.selectionStart;
+        console.log('[ChordAutocomplete] insertElement - textarea has focus, current selectionStart:', currentPos);
+        // Only use current position if it's significantly different and makes more sense
+        if (currentPos < text.length && currentPos !== insertPos) {
+          console.log('[ChordAutocomplete] insertElement - using current position instead of stored');
+          insertPos = currentPos;
+        }
+      }
+    }
+    
+    // Clamp to valid range
+    const validPos = Math.max(0, Math.min(insertPos, text.length));
+    
+    console.log('[ChordAutocomplete] insertElement - final validPos:', validPos, 
+      'text around pos:', JSON.stringify(text.substring(Math.max(0, validPos - 5), Math.min(text.length, validPos + 5))));
+    
+    const before = text.substring(0, validPos);
+    const after = text.substring(validPos);
+    
+    // Check if we're at the start of a line (or empty line)
+    const isAtLineStart = before === '' || before.endsWith('\n');
+    const isAtLineEnd = after === '' || after.startsWith('\n');
+    
+    // Determine what to insert
+    let marker = '';
+    if (elementType === 'heading') {
+      marker = '{heading:}';
+    } else if (elementType === 'instruction') {
+      marker = '{instruction:}';
+    }
+    
+    // Add newline before if not at start and not already on new line
+    let newlineBefore = '';
+    if (!isAtLineStart && !before.endsWith('\n')) {
+      newlineBefore = '\n';
+    }
+    
+    // Add newline after if not at end
+    let newlineAfter = '';
+    if (!isAtLineEnd && !after.startsWith('\n')) {
+      newlineAfter = '\n';
+    }
+    
+    const newText = before + newlineBefore + marker + newlineAfter + after;
+    onChange({ target: { value: newText } });
+    
+    // Set cursor position inside the marker (after the colon)
+    setTimeout(() => {
+      const newCursorPos = validPos + newlineBefore.length + marker.length - 1; // -1 to position before closing brace
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+      textarea.focus();
+    }, 0);
+    
+    setShowDropdown(false);
+    setQuery('');
   };
 
   /**
@@ -472,7 +655,7 @@ export default function ChordAutocomplete({
     
     // Check if dropdown would overflow viewport
     const dropdownHeight = 256; // max-h-64 = 256px
-    const dropdownWidth = 200; // min-w-[200px]
+    const dropdownWidth = 280; // min-w-[280px] to accommodate chord diagrams
     const viewportHeight = window.innerHeight;
     const viewportWidth = window.innerWidth;
     
@@ -513,7 +696,7 @@ export default function ChordAutocomplete({
       left: finalLeft,
       positionAbove,
     });
-  }, [showDropdown, insertPosition, value]);
+  }, [showDropdown, value]);
 
   // Update position on scroll and resize
   useEffect(() => {
@@ -522,13 +705,13 @@ export default function ChordAutocomplete({
     const handleUpdate = () => {
       if (!textareaRef.current) return;
       
-      const position = calculateCursorPosition(insertPosition);
+      const position = calculateCursorPosition(insertPositionRef.current);
       // position is already in viewport coordinates
       const absoluteTop = position.top;
       const absoluteLeft = position.left;
       
       const dropdownHeight = 256;
-      const dropdownWidth = 200;
+      const dropdownWidth = 280;
       const viewportHeight = window.innerHeight;
       const viewportWidth = window.innerWidth;
       
@@ -568,7 +751,7 @@ export default function ChordAutocomplete({
       window.removeEventListener('resize', handleUpdate);
       textarea?.removeEventListener('scroll', handleUpdate);
     };
-  }, [showDropdown, insertPosition, value]);
+  }, [showDropdown, value]);
 
   const getDropdownStyle = () => {
     if (!showDropdown) return {};
@@ -594,8 +777,8 @@ export default function ChordAutocomplete({
       top: `${top}px`,
       left: `${left}px`,
       zIndex: 1000,
-      maxWidth: '300px',
-      minWidth: '200px',
+      maxWidth: '350px',
+      minWidth: '280px',
     };
   };
 
@@ -626,7 +809,7 @@ export default function ChordAutocomplete({
         <div
           ref={dropdownRef}
           style={getDropdownStyle()}
-          className="bg-white border border-gray-300 rounded-lg shadow-lg max-h-64 overflow-y-auto flex flex-col"
+          className="bg-white border border-gray-300 rounded-lg shadow-lg max-h-64 overflow-y-auto flex flex-col min-w-[280px]"
           onMouseDown={(e) => e.stopPropagation()}
         >
           <div className="flex-1 overflow-y-auto">
@@ -638,119 +821,141 @@ export default function ChordAutocomplete({
                 )}
               </div>
             )}
-            {allVariationsFlat.length === 0 ? (
+            {filteredElements.length === 0 && usedFiltered.length === 0 && libraryFiltered.length === 0 ? (
               <div className="px-4 py-2 text-gray-500 text-sm">
-                No chords found
+                No results found
               </div>
             ) : (
               <>
+                {filteredElements.length > 0 && (
+                  <>
+                    <div className={`px-4 py-2 text-xs font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 ${query ? '' : 'sticky top-0'}`}>
+                      Elements
+                    </div>
+                    {filteredElements.map((element, index) => {
+                      const isSelected = index === selectedIndex;
+                      return (
+                        <button
+                          key={`element-${element.type}-${index}`}
+                          type="button"
+                          data-selected={isSelected}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            // Use insertPositionRef.current directly, just like chords do
+                            insertElement(element.type);
+                          }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
+                            isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
+                          }`}
+                        >
+                          <span className="text-lg">{element.icon}</span>
+                          <span className="font-medium">{element.label}</span>
+                        </button>
+                      );
+                    })}
+                    {(usedFiltered.length > 0 || libraryFiltered.length > 0) && (
+                      <div className="border-t border-gray-200"></div>
+                    )}
+                  </>
+                )}
                 {usedFiltered.length > 0 && (
                   <>
                     <div className={`px-4 py-2 text-xs font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 ${query ? '' : 'sticky top-0'}`}>
                       Used in song
                     </div>
-                    {usedFiltered.map((chordName) => {
-                      const variations = chordVariationsMap.get(chordName) || [];
-                      return variations.map((variation, varIndex) => {
-                        const varKey = `${chordName}|${variation.variation || 'standard'}`;
-                        const flatIndex = variationIndexMap.get(varKey) ?? -1;
-                        const isSelected = flatIndex === selectedIndex;
-                        const libraryType = variation.libraryType || 'static';
-                        const frets = variation.frets || '';
-                        
-                        return (
-                          <button
-                            key={`used-${chordName}-${variation.variation || 'standard'}-${varIndex}`}
-                            type="button"
-                            data-selected={isSelected}
-                            onClick={() => handleChordClick(
-                              chordName,
-                              variation.variation || 'standard',
-                              frets,
-                              libraryType
-                            )}
-                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors ${
-                              isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
-                            }`}
-                          >
-                            <div className="flex items-center justify-between w-full">
-                              <div className="flex items-center gap-2 flex-shrink-0">
-                                <span>{chordName}</span>
-                                {libraryType === 'personal' && (
-                                  <svg className="w-4 h-4 text-gray-600" fill="currentColor" viewBox="0 0 20 20" title="Personal library">
-                                    <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
-                                  </svg>
-                                )}
-                                {(libraryType === 'main' || libraryType === 'static') && (
-                                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" title="Central library">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                                  </svg>
-                                )}
-                              </div>
-                              {frets && (
-                                <span className="font-mono text-gray-600 text-xs">{frets}</span>
-                              )}
+                    {usedFiltered.map((chordObj, index) => {
+                      const globalIndex = filteredElements.length + index;
+                      const isSelected = globalIndex === selectedIndex;
+                      const chordName = chordObj.name || chordObj;
+                      const chordFrets = chordObj.frets;
+                      const isPersonal = chordObj.source === 'personal' || personalChordNames.has(chordName);
+                      
+                      return (
+                        <button
+                          key={`used-${chordName}-${chordFrets || 'no-frets'}-${index}`}
+                          type="button"
+                          data-selected={isSelected}
+                          onClick={() => handleChordClick(chordName)}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
+                            isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
+                          }`}
+                        >
+                          {chordFrets && (
+                            <div className="flex-shrink-0">
+                              <ChordDiagram
+                                frets={chordFrets}
+                                chordName=""
+                                instrument={instrument}
+                                tuning={tuning}
+                              />
                             </div>
-                          </button>
-                        );
-                      });
+                          )}
+                          <div className="flex-1 flex items-center gap-2 min-w-0">
+                            <span className="font-medium">{chordName}</span>
+                            {isPersonal && (
+                              <span className="text-xs text-yellow-600 flex-shrink-0" title="Personal library">
+                                ⭐
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
                     })}
                   </>
                 )}
                 
                 {libraryFiltered.length > 0 && (
                   <>
-                    {usedFiltered.length > 0 && (
+                    {(filteredElements.length > 0 || usedFiltered.length > 0) && (
                       <div className="border-t border-gray-200"></div>
                     )}
                     <div className={`px-4 py-2 text-xs font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 ${query ? '' : 'sticky top-0'}`}>
                       Available chords
                     </div>
-                    {libraryFiltered.map((chordName) => {
-                      const variations = chordVariationsMap.get(chordName) || [];
-                      return variations.map((variation, varIndex) => {
-                        const varKey = `${chordName}|${variation.variation || 'standard'}`;
-                        const flatIndex = variationIndexMap.get(varKey) ?? -1;
-                        const isSelected = flatIndex === selectedIndex;
-                        const libraryType = variation.libraryType || 'static';
-                        const frets = variation.frets || '';
-                        
-                        return (
-                          <button
-                            key={`library-${chordName}-${variation.variation || 'standard'}-${varIndex}`}
-                            type="button"
-                            data-selected={isSelected}
-                            onClick={() => handleChordClick(
-                              chordName,
-                              variation.variation || 'standard',
-                              frets,
-                              libraryType
-                            )}
-                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors ${
-                              isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
-                            }`}
-                          >
-                            <div className="flex items-center justify-between w-full">
-                              <div className="flex items-center gap-2 flex-shrink-0">
-                                <span>{chordName}</span>
-                                {libraryType === 'personal' && (
-                                  <svg className="w-4 h-4 text-gray-600" fill="currentColor" viewBox="0 0 20 20" title="Personal library">
-                                    <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z" />
-                                  </svg>
-                                )}
-                                {(libraryType === 'main' || libraryType === 'static') && (
-                                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" title="Central library">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                                  </svg>
-                                )}
-                              </div>
-                              {frets && (
-                                <span className="font-mono text-gray-600 text-xs">{frets}</span>
-                              )}
+                    {libraryFiltered.map((chordObj, index) => {
+                      const globalIndex = filteredElements.length + usedFiltered.length + index;
+                      const isSelected = globalIndex === selectedIndex;
+                      const chordName = chordObj.name || chordObj;
+                      const chordFrets = chordObj.frets;
+                      const isPersonal = chordObj.source === 'personal';
+                      const isStatic = chordObj.source === 'static';
+                      
+                      return (
+                        <button
+                          key={`library-${chordName}-${chordFrets || 'no-frets'}-${index}-${chordObj.source || 'unknown'}`}
+                          type="button"
+                          data-selected={isSelected}
+                          onClick={() => handleChordClick(chordName)}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
+                            isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
+                          }`}
+                        >
+                          {chordFrets && (
+                            <div className="flex-shrink-0">
+                              <ChordDiagram
+                                frets={chordFrets}
+                                chordName=""
+                                instrument={instrument}
+                                tuning={tuning}
+                              />
                             </div>
-                          </button>
-                        );
-                      });
+                          )}
+                          <div className="flex-1 flex items-center gap-2 min-w-0">
+                            <span className="font-medium">{chordName}</span>
+                            {isPersonal && (
+                              <span className="text-xs text-yellow-600 flex-shrink-0" title="Personal library">
+                                ⭐
+                              </span>
+                            )}
+                            {isStatic && !isPersonal && (
+                              <span className="text-xs text-gray-400 flex-shrink-0" title="Standard library">
+                                📚
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
                     })}
                   </>
                 )}
@@ -762,20 +967,20 @@ export default function ChordAutocomplete({
           <div className="border-t border-gray-200 bg-white sticky bottom-0">
             <button
               type="button"
-              data-selected={selectedIndex === allVariationsFlat.length}
+              data-selected={selectedIndex === filteredElements.length + usedFiltered.length + libraryFiltered.length}
               onClick={() => {
                 setShowCustomChordModal(true);
                 setShowDropdown(false);
               }}
               className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
               style={{
-                backgroundColor: selectedIndex === allVariationsFlat.length 
+                backgroundColor: selectedIndex === filteredElements.length + usedFiltered.length + libraryFiltered.length 
                   ? '#eff6ff' 
                   : 'transparent',
-                color: selectedIndex === allVariationsFlat.length 
+                color: selectedIndex === filteredElements.length + usedFiltered.length + libraryFiltered.length 
                   ? '#1e40af' 
                   : '#111827',
-                fontWeight: selectedIndex === allVariationsFlat.length 
+                fontWeight: selectedIndex === filteredElements.length + usedFiltered.length + libraryFiltered.length 
                   ? '500' 
                   : '400',
               }}

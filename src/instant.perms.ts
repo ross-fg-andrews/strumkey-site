@@ -46,9 +46,9 @@ const rules = {
   chords: {
     allow: {
       view: "auth.id != null",
-      create: "false",
-      delete: "false",
-      update: "false",
+      create: "auth.id != null && data.libraryType == 'personal' && data.createdBy == auth.id",
+      delete: "auth.id != null && data.libraryType == 'personal' && data.createdBy == auth.id",
+      update: "auth.id != null && data.libraryType == 'personal' && data.createdBy == auth.id",
     },
   },
   groupMembers: {

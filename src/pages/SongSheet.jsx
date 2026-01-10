@@ -1,7 +1,7 @@
 import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useSong, useSongInSongbooks, useAccessibleSongs, useMyGroups, useAllDatabaseChords } from '../db/queries';
 import { db } from '../db/schema';
-import { renderInlineChords, renderAboveChords, parseLyricsWithChords, lyricsWithChordsToText } from '../utils/lyrics-helpers';
+import { renderInlineChords, renderAboveChords, parseLyricsWithChords, lyricsWithChordsToText, extractElements } from '../utils/lyrics-helpers';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { deleteSong, createSong, updateSong, shareSongsWithGroups } from '../db/mutations';
@@ -244,42 +244,21 @@ export default function SongSheet() {
     }
   }, [song?.chords]);
   
-  // Extract unique chord variations from the song (must be before early returns)
-  // Each variation is identified by chord name + variation + frets combination
-  const uniqueChordVariations = useMemo(() => {
+  // Extract unique chord names from the song (must be before early returns)
+  const uniqueChordNames = useMemo(() => {
     if (!chords || chords.length === 0) return [];
-    const variationMap = new Map();
+    const chordNames = new Set();
     chords.forEach(chord => {
       if (chord.chord) {
+        // Trim and normalize chord name to ensure proper matching
         const normalizedChord = chord.chord.trim();
         if (normalizedChord) {
-          // Create a unique key for this variation: name|variation|frets
-          const variation = chord.variation || 'standard';
-          const frets = chord.frets || '';
-          const key = `${normalizedChord}|${variation}|${frets}`;
-          
-          // Store the chord object with its variation info
-          if (!variationMap.has(key)) {
-            variationMap.set(key, {
-              chordName: normalizedChord,
-              variation: variation,
-              frets: frets,
-              libraryType: chord.libraryType,
-              chord: chord, // Keep reference to original chord object
-            });
-          }
+          chordNames.add(normalizedChord);
         }
       }
     });
-    return Array.from(variationMap.values());
+    return Array.from(chordNames);
   }, [chords]);
-  
-  // Also extract unique chord names for backward compatibility (used elsewhere)
-  const uniqueChordNames = useMemo(() => {
-    const names = new Set();
-    uniqueChordVariations.forEach(v => names.add(v.chordName));
-    return Array.from(names);
-  }, [uniqueChordVariations]);
 
   // Parse embedded chords from song data
   const embeddedChords = useMemo(() => {
@@ -297,48 +276,30 @@ export default function SongSheet() {
   const { data: dbChordsData } = useAllDatabaseChords(user?.id, instrument, tuning);
   const dbChords = dbChordsData?.chords || [];
 
-  // Get chord diagrams data for unique chord variations (must be before early returns)
-  // Creates a separate diagram for each variation (e.g., C(0003) and C(5433) both shown)
+  // Get chord diagrams data for unique chords (must be before early returns)
   const chordDiagrams = useMemo(() => {
-    if (!uniqueChordVariations || uniqueChordVariations.length === 0) return [];
+    if (!uniqueChordNames || uniqueChordNames.length === 0) return [];
     
-    return uniqueChordVariations
-      .map(variationInfo => {
-        const { chordName, variation, frets, chord: storedChord } = variationInfo;
-        let chordData = null;
+    return uniqueChordNames
+      .map(chordName => {
+        // Try to find chord in order: static, database main, database personal, embedded
+        const chordData = findChord(chordName, instrument, tuning, 'standard', {
+          databaseChords: dbChords,
+          embeddedChords: embeddedChords,
+        });
         
-        // If we have stored frets, use them directly
-        if (frets) {
-          chordData = {
+        if (chordData && chordData.frets) {
+          return {
             name: chordName,
-            frets: frets,
-            instrument: instrument,
-            tuning: tuning,
-            variation: variation, // Include variation for reference
+            frets: chordData.frets,
+            instrument: chordData.instrument || instrument,
+            tuning: chordData.tuning || tuning,
           };
-        } else {
-          // Otherwise, look up using stored variation or default to 'standard'
-          const lookupVariation = variation || 'standard';
-          chordData = findChord(chordName, instrument, tuning, lookupVariation, {
-            databaseChords: dbChords,
-            embeddedChords: embeddedChords,
-          });
-          
-          if (chordData && chordData.frets) {
-            chordData = {
-              name: chordName,
-              frets: chordData.frets,
-              instrument: chordData.instrument || instrument,
-              tuning: chordData.tuning || tuning,
-              variation: lookupVariation,
-            };
-          }
         }
-        
-        return chordData;
+        return null;
       })
       .filter(Boolean);
-  }, [uniqueChordVariations, instrument, tuning, dbChords, embeddedChords]);
+  }, [uniqueChordNames, instrument, tuning, dbChords, embeddedChords]);
 
   // Track container width using ResizeObserver (detects zoom and resize) - MUST be before early returns
   const containerRef = useRef(null);
@@ -953,6 +914,9 @@ export default function SongSheet() {
   const renderedLyrics = chordMode === 'inline'
     ? renderInlineChords(song.lyrics, chords)
     : renderAboveChords(song.lyrics, chords);
+  
+  // Parse elements for styling
+  const { headings, instructions } = extractElements(song.lyrics);
 
   const handleBack = () => {
     // Priority 1: Check sessionStorage first (most reliable, persists across navigation)
@@ -1320,42 +1284,86 @@ export default function SongSheet() {
         <div className="flex-1 order-2 md:order-1">
           {chordMode === 'inline' ? (
             <div className="space-y-2 font-mono">
-              {renderedLyrics.map((line, i) => (
-                <p key={i} className="text-base leading-relaxed">
-                  {line === '' ? '\u00A0' : line.split(/\[([^\]]+)\]/).map((part, j) => {
-                    if (j % 2 === 1) {
-                      return <span key={j} className="inline-block px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium">{part}</span>;
-                    }
-                    return <span key={j}>{part}</span>;
-                  })}
-                </p>
-              ))}
+              {renderedLyrics.map((line, i) => {
+                // Check if this line is a heading
+                const headingMatch = line.match(/\{heading:([^}]+)\}/);
+                if (headingMatch) {
+                  return (
+                    <p key={i} className="text-lg font-bold text-gray-800 mt-4 mb-2 first:mt-0">
+                      {headingMatch[1].trim()}
+                    </p>
+                  );
+                }
+                
+                // Check if this line is an instruction
+                const instructionMatch = line.match(/\{instruction:([^}]+)\}/);
+                if (instructionMatch) {
+                  return (
+                    <p key={i} className="text-sm italic text-gray-600 my-2 border-l-2 border-gray-300 pl-3">
+                      {instructionMatch[1].trim()}
+                    </p>
+                  );
+                }
+                
+                // Regular lyric line
+                return (
+                  <p key={i} className="text-base leading-relaxed">
+                    {line === '' ? '\u00A0' : line.split(/\[([^\]]+)\]/).map((part, j) => {
+                      if (j % 2 === 1) {
+                        return <span key={j} className="inline-block px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium">{part}</span>;
+                      }
+                      return <span key={j}>{part}</span>;
+                    })}
+                  </p>
+                );
+              })}
             </div>
           ) : (
             <div className="space-y-2 font-mono">
-              {renderedLyrics.map(({ chordSegments, lyricLine }, i) => (
-                <div key={i} className="leading-relaxed">
-                  {chordSegments && chordSegments.length > 0 && (
-                    <p className="mb-1 whitespace-pre text-lg font-mono">
-                      {chordSegments.map((segment, idx) => {
-                        if (segment.type === 'space') {
-                          return <span key={idx}>{segment.content}</span>;
-                        } else {
-                          return (
-                            <span
-                              key={idx}
-                              className="inline-block px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium -mx-2"
-                            >
-                              {segment.content}
-                            </span>
-                          );
-                        }
-                      })}
+              {renderedLyrics.map((lineData, i) => {
+                // Handle headings and instructions
+                if (lineData.type === 'heading') {
+                  return (
+                    <p key={i} className="text-lg font-bold text-gray-800 mt-4 mb-2 first:mt-0">
+                      {lineData.text}
                     </p>
-                  )}
-                  <p className="text-base whitespace-pre">{lyricLine === '' ? '\u00A0' : lyricLine}</p>
-                </div>
-              ))}
+                  );
+                }
+                
+                if (lineData.type === 'instruction') {
+                  return (
+                    <p key={i} className="text-sm italic text-gray-600 my-2 border-l-2 border-gray-300 pl-3">
+                      {lineData.text}
+                    </p>
+                  );
+                }
+                
+                // Regular line with chords
+                const { chordSegments, lyricLine } = lineData;
+                return (
+                  <div key={i} className="leading-relaxed">
+                    {chordSegments && chordSegments.length > 0 && (
+                      <p className="mb-1 whitespace-pre text-lg font-mono">
+                        {chordSegments.map((segment, idx) => {
+                          if (segment.type === 'space') {
+                            return <span key={idx}>{segment.content}</span>;
+                          } else {
+                            return (
+                              <span
+                                key={idx}
+                                className="inline-block px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium -mx-2"
+                              >
+                                {segment.content}
+                              </span>
+                            );
+                          }
+                        })}
+                      </p>
+                    )}
+                    <p className="text-base whitespace-pre">{lyricLine === '' ? '\u00A0' : lyricLine}</p>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -1368,9 +1376,9 @@ export default function SongSheet() {
           >
             {/* Desktop: flex wrap layout */}
             <div className="hidden md:flex flex-wrap gap-x-3 gap-y-6 justify-start">
-              {chordDiagrams.map(({ name, frets, instrument: chordInstrument, tuning: chordTuning, variation }) => (
+              {chordDiagrams.map(({ name, frets, instrument: chordInstrument, tuning: chordTuning }) => (
                 <ChordDiagram 
-                  key={`${name}-${variation || 'standard'}-${frets || ''}`}
+                  key={name}
                   frets={frets} 
                   chordName={name}
                   instrument={chordInstrument || instrument}
@@ -1380,9 +1388,9 @@ export default function SongSheet() {
             </div>
             {/* Mobile: horizontal scrollable line */}
             <div className="md:hidden flex gap-x-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
-              {chordDiagrams.map(({ name, frets, instrument: chordInstrument, tuning: chordTuning, variation }) => (
+              {chordDiagrams.map(({ name, frets, instrument: chordInstrument, tuning: chordTuning }) => (
                 <ChordDiagram 
-                  key={`${name}-${variation || 'standard'}-${frets || ''}`}
+                  key={name}
                   frets={frets} 
                   chordName={name}
                   instrument={chordInstrument || instrument}
