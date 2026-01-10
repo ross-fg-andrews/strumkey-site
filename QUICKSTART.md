@@ -147,7 +147,7 @@ Once the app is running:
 2. Sign in with your email
 3. Create your first song
 4. Set up your first group
-5. Start using Ukelio!
+5. Start using Strumkey!
 
 
 

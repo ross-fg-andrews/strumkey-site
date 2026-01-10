@@ -61,7 +61,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 flex items-center justify-center px-4">
       <div className="max-w-2xl w-full text-center">
         <h1 className="text-5xl font-bold text-primary-900 mb-4">
-          Ukelio
+          Strumkey
         </h1>
         <p className="text-xl text-gray-700 mb-8">
           Create, share, and manage songs for your ukulele group

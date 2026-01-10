@@ -1,6 +1,6 @@
-# Ukelio Setup Guide
+# Strumkey Setup Guide
 
-Follow these steps to get your Ukelio app up and running.
+Follow these steps to get your Strumkey app up and running.
 
 ## Step 1: Install Dependencies
 

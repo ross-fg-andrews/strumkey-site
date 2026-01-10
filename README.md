@@ -1,4 +1,4 @@
-# Ukelio - Ukulele Group Web App
+# Strumkey - Ukulele Group Web App
 
 A web application for ukulele group organizers and members to create, share, and manage songs, songbooks, and group meetings.
 

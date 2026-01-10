@@ -70,7 +70,7 @@ export default function Navigation() {
               onClick={handleLinkClick}
               className="text-2xl font-bold text-primary-600"
             >
-              Ukelio
+              Strumkey
             </Link>
             <button
               onClick={() => setIsOpen(false)}
