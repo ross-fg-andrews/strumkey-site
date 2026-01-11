@@ -724,7 +724,6 @@ export async function updateUser(userId, updates) {
   }
 }
 
-
 /**
  * Add email to waiting list
  * @param {string} email - Email address to add
