@@ -31,8 +31,7 @@ node_modules/.vite
 # Environment variables
 .env
 .env.local
-.env.production
-
+# Note: .env.staging and .env.production are template files and should be committed
 
 # Deployment notes (contains App IDs)
 DEPLOYMENT_NOTES.md

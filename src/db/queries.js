@@ -760,7 +760,6 @@ export function useUserMembershipStatus(groupId, userId) {
   });
 }
 
-
 // Get all waiting list entries (admin only - filter in component)
 export function useWaitingList() {
   const { data, error } = db.useQuery({
