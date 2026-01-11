@@ -802,3 +802,30 @@ export function useInviteByToken(token) {
 
   return { data, error };
 }
+
+// Get user by email (for checking if account exists)
+export function useUserByEmail(email) {
+  // Always call hooks unconditionally to satisfy React's rules of hooks
+  // Use an impossible condition when email is null/empty
+  const normalizedEmail = email ? email.trim().toLowerCase() : '';
+  const { data, error } = db.useQuery({
+    $users: {
+      $: {
+        where: normalizedEmail
+          ? { email: normalizedEmail }
+          : { email: '' }, // Impossible condition when no email
+      },
+    },
+  });
+
+  // Log errors for debugging
+  if (error && email) {
+    console.error('useUserByEmail error:', error);
+  }
+
+  if (!email) {
+    return { data: { $users: [] }, error: null };
+  }
+
+  return { data, error };
+}

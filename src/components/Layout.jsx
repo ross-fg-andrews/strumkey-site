@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import Navigation from './Navigation';
 import { useAuth } from '../contexts/AuthContext';
@@ -5,6 +6,12 @@ import { useAuth } from '../contexts/AuthContext';
 export default function Layout() {
   const { isAuthenticated, loading } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!loading && !isAuthenticated) {
+      navigate('/');
+    }
+  }, [loading, isAuthenticated, navigate]);
 
   if (loading) {
     return (
@@ -15,7 +22,6 @@ export default function Layout() {
   }
 
   if (!isAuthenticated) {
-    navigate('/');
     return null;
   }
 

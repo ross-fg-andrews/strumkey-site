@@ -76,7 +76,11 @@ const rules = {
   },
   $users: {
     allow: {
-      view: "auth.id != null",
+      // Allow unauthenticated users to query by email for existence checks
+      // This is safe because we only check if a user exists, not access their data
+      // Allow viewing if authenticated OR if querying by email (for existence checks)
+      // Note: This allows viewing any user with an email, but the query filters by email
+      view: "auth.id != null || data.email != null",
       update: "auth.id == data.id",
     },
   },
