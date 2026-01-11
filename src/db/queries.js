@@ -760,3 +760,46 @@ export function useUserMembershipStatus(groupId, userId) {
   });
 }
 
+
+// Get all waiting list entries (admin only - filter in component)
+export function useWaitingList() {
+  const { data, error } = db.useQuery({
+    waitingList: {
+      $: {
+        order: { createdAt: 'desc' },
+      },
+    },
+  });
+
+  return { data, error };
+}
+
+// Get all invites (admin only - filter in component)
+export function useInvites() {
+  const { data, error } = db.useQuery({
+    invites: {
+      $: {
+        order: { createdAt: 'desc' },
+      },
+    },
+  });
+
+  return { data, error };
+}
+
+// Get invite by token
+export function useInviteByToken(token) {
+  if (!token) {
+    return { data: { invites: [] }, error: null };
+  }
+
+  const { data, error } = db.useQuery({
+    invites: {
+      $: {
+        where: { token },
+      },
+    },
+  });
+
+  return { data, error };
+}

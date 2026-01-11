@@ -14,6 +14,7 @@ const _schema = i.schema({
       type: i.string().optional(),
       firstName: i.string().optional(),
       lastName: i.string().optional(),
+      isSiteAdmin: i.boolean().optional(),
     }),
     chords: i.entity({
       frets: i.string(),
@@ -104,6 +105,19 @@ const _schema = i.schema({
       createdAt: i.number(),
       email: i.string().optional(),
       name: i.string().optional(),
+    }),
+    waitingList: i.entity({
+      email: i.string().unique().indexed(),
+      createdAt: i.number().indexed(),
+      notified: i.boolean(),
+    }),
+    invites: i.entity({
+      token: i.string().unique().indexed(),
+      email: i.string().indexed(),
+      createdBy: i.string(),
+      createdAt: i.number().indexed(),
+      usedAt: i.number().optional(),
+      usedBy: i.string().optional(),
     }),
   },
   links: {

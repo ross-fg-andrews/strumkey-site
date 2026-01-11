@@ -80,6 +80,19 @@ const rules = {
       update: "auth.id == data.id",
     },
   },
+  waitingList: {
+    allow: {
+      create: "true", // Anyone can join waiting list
+      view: "auth.id != null", // Authenticated users can view (we'll filter by isSiteAdmin in app)
+    },
+  },
+  invites: {
+    allow: {
+      create: "auth.id != null", // Authenticated users can create (we'll check isSiteAdmin in app)
+      view: "true", // Anyone can view invites (needed for invite links to work, token in query filters results)
+      update: "auth.id != null", // Authenticated users can update (we'll check isSiteAdmin in app)
+    },
+  },
 } satisfies InstantRules;
 
 export default rules;

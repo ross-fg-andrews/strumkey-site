@@ -4,6 +4,8 @@ import { AuthProvider } from './contexts/AuthContext'
 import { db } from './db/schema'
 import Layout from './components/Layout'
 import LandingPage from './pages/LandingPage'
+import LoginPage from './pages/LoginPage'
+import AdminPanel from './pages/AdminPanel'
 import HomePage from './pages/HomePage'
 import SongEditor from './pages/SongEditor'
 import SongSheet from './pages/SongSheet'
@@ -108,8 +110,10 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<LoginPage />} />
           <Route element={<Layout />}>
             <Route path="/home" element={<HomePage />} />
+            <Route path="/admin" element={<AdminPanel />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/songs" element={<SongsIndex />} />
             <Route path="/songs/new" element={<SongSheet />} />

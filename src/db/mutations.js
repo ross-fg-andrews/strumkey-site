@@ -724,3 +724,56 @@ export async function updateUser(userId, updates) {
   }
 }
 
+
+/**
+ * Add email to waiting list
+ * @param {string} email - Email address to add
+ * @returns {Promise} Transaction promise
+ */
+export async function addToWaitingList(email) {
+  return db.transact(
+    db.tx.waitingList[id()].update({
+      email: email.trim().toLowerCase(),
+      createdAt: Date.now(),
+      notified: false,
+    })
+  );
+}
+
+/**
+ * Create an invite for a specific email address
+ * @param {string} email - Email address for the invite
+ * @param {string} createdBy - User ID of the admin creating the invite
+ * @returns {Promise<{inviteId: string, token: string}>} Promise with invite ID and token
+ */
+export async function createInvite(email, createdBy) {
+  // Generate a secure random token
+  const token = crypto.randomUUID();
+  const inviteId = id();
+  
+  await db.transact(
+    db.tx.invites[inviteId].update({
+      token,
+      email: email.trim().toLowerCase(),
+      createdBy,
+      createdAt: Date.now(),
+    })
+  );
+  
+  return { inviteId, token };
+}
+
+/**
+ * Mark an invite as used
+ * @param {string} inviteId - Invite ID
+ * @param {string} userId - User ID who used the invite
+ * @returns {Promise} Transaction promise
+ */
+export async function useInvite(inviteId, userId) {
+  return db.transact(
+    db.tx.invites[inviteId].update({
+      usedAt: Date.now(),
+      usedBy: userId,
+    })
+  );
+}
