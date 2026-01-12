@@ -282,7 +282,7 @@ export default function SongSheet() {
     
     return uniqueChordNames
       .map(chordName => {
-        // Try to find chord in order: static, database main, database personal, embedded
+        // Try to find chord in order: embedded, database personal, database main
         const chordData = findChord(chordName, instrument, tuning, 'standard', {
           databaseChords: dbChords,
           embeddedChords: embeddedChords,
@@ -292,6 +292,7 @@ export default function SongSheet() {
           return {
             name: chordName,
             frets: chordData.frets,
+            baseFret: chordData.baseFret, // Pass baseFret if available
             instrument: chordData.instrument || instrument,
             tuning: chordData.tuning || tuning,
           };
@@ -1376,10 +1377,11 @@ export default function SongSheet() {
           >
             {/* Desktop: flex wrap layout */}
             <div className="hidden md:flex flex-wrap gap-x-3 gap-y-6 justify-start">
-              {chordDiagrams.map(({ name, frets, instrument: chordInstrument, tuning: chordTuning }) => (
+              {chordDiagrams.map(({ name, frets, baseFret, instrument: chordInstrument, tuning: chordTuning }) => (
                 <ChordDiagram 
                   key={name}
                   frets={frets} 
+                  baseFret={baseFret}
                   chordName={name}
                   instrument={chordInstrument || instrument}
                   tuning={chordTuning || tuning}
@@ -1388,10 +1390,11 @@ export default function SongSheet() {
             </div>
             {/* Mobile: horizontal scrollable line */}
             <div className="md:hidden flex gap-x-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
-              {chordDiagrams.map(({ name, frets, instrument: chordInstrument, tuning: chordTuning }) => (
+              {chordDiagrams.map(({ name, frets, baseFret, instrument: chordInstrument, tuning: chordTuning }) => (
                 <ChordDiagram 
                   key={name}
                   frets={frets} 
+                  baseFret={baseFret}
                   chordName={name}
                   instrument={chordInstrument || instrument}
                   tuning={chordTuning || tuning}

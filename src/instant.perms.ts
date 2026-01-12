@@ -46,7 +46,8 @@ const rules = {
   chords: {
     allow: {
       view: "auth.id != null",
-      create: "auth.id != null && data.libraryType == 'personal' && data.createdBy == auth.id",
+      // Allow creating personal chords (user's own) or main library chords (for migrations)
+      create: "auth.id != null && ((data.libraryType == 'personal' && data.createdBy == auth.id) || data.libraryType == 'main')",
       delete: "auth.id != null && data.libraryType == 'personal' && data.createdBy == auth.id",
       update: "auth.id != null && data.libraryType == 'personal' && data.createdBy == auth.id",
     },

@@ -12,7 +12,8 @@ export default function CustomChordModal({
   onSave, 
   instrument = 'ukulele',
   tuning = 'ukulele_standard',
-  userId 
+  userId,
+  databaseChords = []
 }) {
   const [fretInputs, setFretInputs] = useState(['0', '0', '0', '0']);
   const [suggestedNames, setSuggestedNames] = useState([]);
@@ -51,7 +52,7 @@ export default function CustomChordModal({
     const isValid = validateFrets();
     
     if (isValid && fretsString.length === 4) {
-      const suggested = suggestChordNames(fretsString, instrument, tuning);
+      const suggested = suggestChordNames(fretsString, instrument, tuning, { databaseChords });
       setSuggestedNames(suggested);
       
       // Auto-fill first suggested name if available and name is empty
@@ -151,6 +152,35 @@ export default function CustomChordModal({
     }).join('');
   };
 
+  // Extract key and suffix from chord name
+  // Examples: "C" -> {key: "C", suffix: "custom"}, "Cmaj7" -> {key: "C", suffix: "maj7"}
+  const extractKeyAndSuffix = (name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return { key: trimmed, suffix: 'custom' };
+    
+    // Match pattern: letter(s) for key, then optional suffix
+    // Handle sharps/flats: A#, Bb, etc.
+    const match = trimmed.match(/^([A-G][#b]?)(.*)$/i);
+    if (match) {
+      const key = match[1].toUpperCase();
+      const suffix = match[2] || 'custom';
+      return { key, suffix };
+    }
+    
+    // Fallback: use whole name as key, "custom" as suffix
+    return { key: trimmed, suffix: 'custom' };
+  };
+
+  // Convert frets string to array format
+  const convertFretsToArray = (fretsString) => {
+    return fretsString.split('').map(f => {
+      const lower = f.toLowerCase();
+      if (lower === 'x') return null; // muted strings as null
+      const num = parseInt(f, 10);
+      return isNaN(num) ? null : num;
+    });
+  };
+
   // Handle save
   const handleSave = () => {
     if (!validateFrets()) {
@@ -172,10 +202,22 @@ export default function CustomChordModal({
       return;
     }
     
+    // Convert frets to array format
+    const fretsArray = convertFretsToArray(fretsString);
+    
+    // Extract key and suffix from chord name
+    const { key, suffix } = extractKeyAndSuffix(chordName);
+    
     // Call onSave with chord data - always save to personal library
     onSave({
       name: chordName.trim(),
-      frets: fretsString,
+      key,
+      suffix,
+      frets: fretsArray, // Now array format
+      fingers: [...fretsArray], // Copy frets as fingers (user positions their own fingers)
+      baseFret: 1, // Default baseFret for custom chords
+      barres: [], // Empty by default
+      position: 1, // Custom chords don't have positions
       instrument,
       tuning,
     });
@@ -301,6 +343,7 @@ export default function CustomChordModal({
               chordName=""
               instrument={instrument}
               tuning={tuning}
+              baseFret={1}
             />
           </div>
         )}

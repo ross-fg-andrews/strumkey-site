@@ -17,13 +17,18 @@ const _schema = i.schema({
       isSiteAdmin: i.boolean().optional(),
     }),
     chords: i.entity({
-      frets: i.string(),
-      instrument: i.string(),
-      name: i.string().indexed(),
-      tuning: i.string(),
-      variation: i.string(),
-      libraryType: i.string().optional(),
-      createdBy: i.string().optional(),
+      name: i.string().indexed(),          // Display name: "C", "Cmaj7", "Bm7b5"
+      key: i.string(),                     // Root note: "C", "D", "E", etc.
+      suffix: i.string(),                 // Chord type: "major", "m7", "dim", "sus2"
+      frets: i.json(),                     // Array: [0,0,0,3]
+      fingers: i.json(),                   // Array: [0,0,0,3] - which fingers
+      baseFret: i.number(),                // Number: 1, 5, 7 (where on neck)
+      barres: i.json(),                    // Array: [3] or [] - frets to barre
+      position: i.number(),                // Number: 1, 2, 3 (which voicing, 1 = most common)
+      instrument: i.string(),              // "ukulele"
+      tuning: i.string(),                  // "standard" (GCEA)
+      libraryType: i.string().optional(),  // "main" or "personal"
+      createdBy: i.string().optional(),    // userId for personal chords only
     }),
     groupMembers: i.entity({
       groupId: i.string(),

@@ -2,23 +2,37 @@
  * Chord Name Suggestion Utility
  * 
  * Provides pattern-based chord name suggestions by matching against
- * the chord seed library. Supports exact matches and transposed shape recognition.
+ * the database chord library. Supports exact matches and transposed shape recognition.
  */
 
-import { CHORD_SEED_DATA } from '../data/chord-seed';
-
 /**
- * Convert fret string to array of numbers, handling muted strings
- * @param {string} frets - Fret positions (e.g., "2013" or "x013")
+ * Convert fret string or array to array of numbers, handling muted strings
+ * @param {string|Array} frets - Fret positions (e.g., "2013", "x013", or [2,0,1,3])
  * @returns {Array<number|null>} Array of fret numbers, null for muted strings
  */
 function parseFrets(frets) {
-  return frets.split('').map(f => {
-    const normalized = f.toLowerCase();
-    if (normalized === 'x') return null; // Muted string
-    const num = parseInt(normalized, 10);
-    return isNaN(num) ? null : num;
-  });
+  // Handle array format (new schema)
+  if (Array.isArray(frets)) {
+    return frets.map(f => {
+      if (f === null || f === undefined) return null; // Muted string
+      if (typeof f === 'string' && f.toLowerCase() === 'x') return null;
+      const num = typeof f === 'number' ? f : parseInt(f, 10);
+      return isNaN(num) ? null : num;
+    });
+  }
+  
+  // Handle string format (legacy)
+  if (typeof frets === 'string') {
+    return frets.split('').map(f => {
+      const normalized = f.toLowerCase();
+      if (normalized === 'x') return null; // Muted string
+      const num = parseInt(normalized, 10);
+      return isNaN(num) ? null : num;
+    });
+  }
+  
+  // Fallback: return empty array
+  return [];
 }
 
 /**
@@ -100,38 +114,62 @@ function calculateSimilarity(frets1, frets2) {
 /**
  * Suggest chord names from a fret pattern
  * Checks for exact matches, then transposed shapes, then similar patterns
- * @param {string} frets - Fret positions (e.g., "2013")
+ * @param {string|Array} frets - Fret positions (e.g., "2013" or [2,0,1,3])
  * @param {string} instrument - Instrument type (default: 'ukulele')
  * @param {string} tuning - Tuning identifier (default: 'ukulele_standard')
+ * @param {Object} options - Additional options
+ * @param {Array} options.databaseChords - Array of database chord objects (main library)
  * @returns {Array<string>} Array of suggested chord names matching the naming convention
  */
-export function suggestChordNames(frets, instrument = 'ukulele', tuning = 'ukulele_standard') {
+export function suggestChordNames(frets, instrument = 'ukulele', tuning = 'ukulele_standard', options = {}) {
   if (!frets || frets.length === 0) {
     return [];
   }
   
-  // Normalize frets (handle case)
-  const normalizedFrets = frets.toLowerCase();
+  // Handle both string and array formats
+  let normalizedFrets;
+  let inputFrets;
+  
+  if (Array.isArray(frets)) {
+    // Array format: convert to string for comparison with seed data
+    normalizedFrets = frets.map(f => {
+      if (f === null || f === undefined) return 'x';
+      return String(f);
+    }).join('').toLowerCase();
+    inputFrets = parseFrets(frets);
+  } else {
+    // String format (legacy)
+    normalizedFrets = frets.toLowerCase();
+    inputFrets = parseFrets(normalizedFrets);
+  }
   
   // Check if all strings are muted
   if (normalizedFrets.split('').every(f => f === 'x')) {
     return [];
   }
   
-  const inputFrets = parseFrets(normalizedFrets);
   const normalizedInput = normalizeFretPattern(inputFrets);
   
-  // Get all chords for this instrument/tuning
-  const relevantChords = CHORD_SEED_DATA.filter(chord => 
+  // Get chords from database (main library only)
+  const { databaseChords = [] } = options;
+  const relevantChords = databaseChords.filter(chord => 
     chord.instrument === instrument &&
-    chord.tuning === tuning
+    chord.tuning === tuning &&
+    chord.libraryType === 'main'
   );
   
   const suggestions = new Map(); // Use Map to avoid duplicates while preserving order
   
   // 1. Check for exact matches first (highest priority)
   for (const chord of relevantChords) {
-    if (chord.frets === normalizedFrets) {
+    // Handle array format frets (database uses arrays)
+    const chordFrets = parseFrets(chord.frets);
+    const chordFretsStr = Array.isArray(chord.frets)
+      ? chord.frets.map(f => f === null ? 'x' : String(f)).join('').toLowerCase()
+      : (typeof chord.frets === 'string' ? chord.frets.toLowerCase() : '');
+    
+    // Compare normalized strings
+    if (chordFretsStr === normalizedFrets) {
       suggestions.set(chord.name, { name: chord.name, score: 1.0, type: 'exact' });
     }
   }
@@ -172,7 +210,7 @@ export function suggestChordNames(frets, instrument = 'ukulele', tuning = 'ukule
  * Legacy function name for backward compatibility
  * @deprecated Use suggestChordNames instead
  */
-export function detectChordNames(frets, instrument = 'ukulele', tuning = 'ukulele_standard') {
-  return suggestChordNames(frets, instrument, tuning);
+export function detectChordNames(frets, instrument = 'ukulele', tuning = 'ukulele_standard', options = {}) {
+  return suggestChordNames(frets, instrument, tuning, options);
 }
 

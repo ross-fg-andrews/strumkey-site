@@ -414,6 +414,11 @@ export function useAllChords() {
 // Get personal library chords for a user
 export function usePersonalChords(userId, instrument = 'ukulele', tuning = 'ukulele_standard') {
   // Always call hooks unconditionally to satisfy React's rules of hooks
+  // Handle both 'standard' and 'ukulele_standard' for backward compatibility
+  const tuningFilter = tuning === 'ukulele_standard' 
+    ? { $in: ['ukulele_standard', 'standard'] }
+    : tuning;
+    
   const { data, error } = db.useQuery({
     chords: {
       $: {
@@ -422,14 +427,14 @@ export function usePersonalChords(userId, instrument = 'ukulele', tuning = 'ukul
               libraryType: 'personal',
               createdBy: userId,
               instrument,
-              tuning,
+              tuning: tuningFilter,
             }
           : {
               // Impossible condition when no userId
               libraryType: 'personal',
               createdBy: '',
               instrument,
-              tuning,
+              tuning: tuningFilter,
             },
         order: { name: 'asc' },
       },
@@ -445,13 +450,18 @@ export function usePersonalChords(userId, instrument = 'ukulele', tuning = 'ukul
 
 // Get main library chords from database (user-contributed)
 export function useMainLibraryChords(instrument = 'ukulele', tuning = 'ukulele_standard') {
+  // Handle both 'standard' and 'ukulele_standard' for backward compatibility
+  // During migration, some chords may have 'standard' instead of 'ukulele_standard'
   const { data, error } = db.useQuery({
     chords: {
       $: {
         where: {
           libraryType: 'main',
           instrument,
-          tuning,
+          // Accept both tuning values during migration period
+          tuning: tuning === 'ukulele_standard' 
+            ? { $in: ['ukulele_standard', 'standard'] }
+            : tuning,
         },
         order: { name: 'asc' },
       },

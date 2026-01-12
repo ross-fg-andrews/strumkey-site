@@ -24,16 +24,18 @@ function getStringLabels(instrument, tuning) {
  * ChordDiagram Component
  * Renders an SVG diagram of a chord for any instrument
  * 
- * @param {string} frets - Fret positions as string, e.g., "0003" for C chord
+ * @param {string|Array} frets - Fret positions as string (e.g., "0003") or array (e.g., [0,0,0,3])
  * @param {string} chordName - Name of the chord, e.g., "C"
  * @param {string} instrument - Instrument type (default: 'ukulele')
  * @param {string} tuning - Tuning identifier (default: 'ukulele_standard')
+ * @param {number} baseFret - Optional base fret number (if provided, used instead of calculating from frets)
  */
 export default function ChordDiagram({ 
   frets, 
   chordName, 
   instrument = 'ukulele',
-  tuning = 'ukulele_standard'
+  tuning = 'ukulele_standard',
+  baseFret: providedBaseFret
 }) {
   if (!frets) {
     return null;
@@ -42,25 +44,50 @@ export default function ChordDiagram({
   const stringLabels = getStringLabels(instrument, tuning);
   const stringCount = stringLabels.length;
 
-  // Validate frets match string count
-  if (frets.length !== stringCount) {
-    console.warn(`Fret notation "${frets}" doesn't match ${stringCount} strings for ${instrument} ${tuning}`);
+  // Handle both string and array formats for backward compatibility
+  let fretArray;
+  if (Array.isArray(frets)) {
+    // New format: array of numbers
+    if (frets.length !== stringCount) {
+      console.warn(`Fret array length ${frets.length} doesn't match ${stringCount} strings for ${instrument} ${tuning}`);
+      return null;
+    }
+    fretArray = frets.map(f => {
+      if (f === null || f === undefined) return 'muted';
+      if (typeof f === 'string' && (f === 'x' || f === 'X')) return 'muted';
+      const num = typeof f === 'number' ? f : parseInt(f, 10);
+      if (isNaN(num)) return 'muted';
+      if (num === 0) return 'open';
+      return num;
+    });
+  } else if (typeof frets === 'string') {
+    // Legacy format: string like "0003"
+    if (frets.length !== stringCount) {
+      console.warn(`Fret notation "${frets}" doesn't match ${stringCount} strings for ${instrument} ${tuning}`);
+      return null;
+    }
+    fretArray = frets.split('').map(f => {
+      if (f === 'x' || f === 'X') return 'muted';
+      if (f === '0') return 'open';
+      return parseInt(f, 10);
+    });
+  } else {
+    console.warn(`Invalid frets format: ${typeof frets}`);
     return null;
   }
-
-  const fretArray = frets.split('').map(f => {
-    if (f === 'x' || f === 'X') return 'muted';
-    if (f === '0') return 'open';
-    return parseInt(f, 10);
-  });
 
   const numericFrets = fretArray.filter(f => typeof f === 'number');
   const maxFret = numericFrets.length > 0 ? Math.max(...numericFrets) : 0;
   const minFret = numericFrets.length > 0 ? Math.min(...numericFrets) : 0;
+  
+  // Use provided baseFret if available, otherwise calculate from minFret
+  const baseFret = providedBaseFret !== undefined && providedBaseFret !== null 
+    ? providedBaseFret 
+    : minFret;
 
   // Calculate number of frets to show
   // If maxFret <= 4: show nut, frets 0-4 (5 frets total), no fret number
-  // If maxFret > 4: no nut, show fret number = minFret, show frets from minFret to maxFret
+  // If maxFret > 4: no nut, show fret number = baseFret, show frets from baseFret to maxFret
   let fretCount;
   let startFret;
   let showNut;
@@ -73,8 +100,8 @@ export default function ChordDiagram({
   } else {
     // Chord doesn't fit in 0-4 - don't show nut, show fret number
     showNut = false;
-    startFret = minFret;
-    const chordSpan = maxFret - minFret + 1;
+    startFret = baseFret; // Use baseFret (either provided or calculated)
+    const chordSpan = maxFret - baseFret + 1;
     // Always show at least 4 fret spaces (which requires 5 fret lines)
     // For example: frets 5-8 need lines at 5,6,7,8,9 to show spaces 5-6, 6-7, 7-8, 8-9
     fretCount = Math.max(5, chordSpan + 1);
@@ -98,10 +125,9 @@ export default function ChordDiagram({
   const startY = 6; // Start Y position (first fret line position)
   const height = fretCount * fretSpacing + 20; // Height based on fret count
   
-  // Calculate Y position for fret number (centered at lowest fretted note)
-  const lowestFrettedNote = numericFrets.length > 0 ? Math.min(...numericFrets) : null;
-  const fretNumberY = lowestFrettedNote !== null && !showNut
-    ? startY + (lowestFrettedNote - startFret) * fretSpacing + fretSpacing / 2
+  // Calculate Y position for fret number (centered at baseFret position)
+  const fretNumberY = !showNut && baseFret > 0
+    ? startY + (baseFret - startFret) * fretSpacing + fretSpacing / 2
     : null;
   
   return (
@@ -126,7 +152,7 @@ export default function ChordDiagram({
               className="absolute text-xs font-medium text-gray-700 leading-none"
               style={{ top: fretNumberY, left: '50%', transform: 'translate(-50%, -50%)' }}
             >
-              {minFret}
+              {baseFret}
             </span>
           )}
         </div>

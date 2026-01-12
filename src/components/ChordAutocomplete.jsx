@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { getChordNames, findChord, getChordVariations, getAllChords } from '../utils/chord-library';
+import { getChordNames, findChord, getChordVariations } from '../utils/chord-library';
 import { useAllDatabaseChords } from '../db/queries';
 import CustomChordModal from './CustomChordModal';
 import { createPersonalChord } from '../db/mutations';
@@ -149,23 +149,12 @@ export default function ChordAutocomplete({
   // Extract chords already used in the song
   const usedChords = useMemo(() => extractUsedChords(value), [value]);
 
-  // Get all chord variations (not just unique names) from all sources
+  // Get all chord variations (not just unique names) from database
   // Keep ALL variations with different frets, even if they have the same name
-  // IMPORTANT: Always keep static chords, even if database has same name+frets
-  // This allows users to see both their custom version and the standard version
   const allChordVariations = useMemo(() => {
     const variations = [];
     
-    // Get static seed chords FIRST - always include all of them
-    const staticChords = getAllChords(instrument, tuning);
-    // Add all static chords
-    staticChords.forEach(c => {
-      variations.push({ ...c, source: 'static' });
-    });
-    
     // Get database chords (main + personal)
-    // Add ALL of them as separate entries, even if they have same name+frets as static
-    // This way users can see both their custom version and standard version
     const dbChordsList = dbChords
       .filter(c => c.instrument === instrument && c.tuning === tuning)
       .map(c => ({ ...c, source: c.libraryType === 'personal' ? 'personal' : 'main' }));
@@ -885,6 +874,7 @@ export default function ChordAutocomplete({
                             <div className="flex-shrink-0">
                               <ChordDiagram
                                 frets={chordFrets}
+                                baseFret={chordObj.baseFret}
                                 chordName=""
                                 instrument={instrument}
                                 tuning={tuning}
@@ -919,7 +909,6 @@ export default function ChordAutocomplete({
                       const chordName = chordObj.name || chordObj;
                       const chordFrets = chordObj.frets;
                       const isPersonal = chordObj.source === 'personal';
-                      const isStatic = chordObj.source === 'static';
                       
                       return (
                         <button
@@ -935,6 +924,7 @@ export default function ChordAutocomplete({
                             <div className="flex-shrink-0">
                               <ChordDiagram
                                 frets={chordFrets}
+                                baseFret={chordObj.baseFret}
                                 chordName=""
                                 instrument={instrument}
                                 tuning={tuning}
@@ -946,11 +936,6 @@ export default function ChordAutocomplete({
                             {isPersonal && (
                               <span className="text-xs text-yellow-600 flex-shrink-0" title="Personal library">
                                 ⭐
-                              </span>
-                            )}
-                            {isStatic && !isPersonal && (
-                              <span className="text-xs text-gray-400 flex-shrink-0" title="Standard library">
-                                📚
                               </span>
                             )}
                           </div>
@@ -999,6 +984,7 @@ export default function ChordAutocomplete({
         instrument={instrument}
         tuning={tuning}
         userId={userId}
+        databaseChords={dbChords}
       />
     </div>
   );

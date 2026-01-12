@@ -1,15 +1,13 @@
 /**
  * Central Chord Library Utility
  * 
- * Provides functions to query and filter chords from the static chord library
- * and database libraries (main library and personal library).
+ * Provides functions to query and filter chords from database libraries
+ * (main library and personal library).
  */
-
-import { CHORD_SEED_DATA } from '../data/chord-seed';
 
 /**
  * Find a chord by name, instrument, and tuning
- * Checks multiple sources in order: embedded chords, personal library, main library, static seed
+ * Checks multiple sources in order: embedded chords, personal library, main library
  * This prioritizes custom/user chords over standard library chords
  * @param {string} chordName - Chord name (e.g., "C", "Am", "G7")
  * @param {string} instrument - Instrument type (e.g., "ukulele")
@@ -89,54 +87,12 @@ export function findChord(
     }
   }
   
-  // 4. Check static seed data last (lowest priority)
-  if (!chord) {
-    chord = CHORD_SEED_DATA.find(c => 
-      c.name === chordName &&
-      c.instrument === instrument &&
-      c.tuning === tuning &&
-      c.variation === variation
-    );
-    
-    // Fallback to standard variation if specific variation not found
-    if (!chord && variation !== 'standard') {
-      chord = CHORD_SEED_DATA.find(c => 
-        c.name === chordName &&
-        c.instrument === instrument &&
-        c.tuning === tuning &&
-        c.variation === 'standard'
-      );
-    }
-    
-    // Fallback to case-insensitive match in static data
-    if (!chord) {
-      chord = CHORD_SEED_DATA.find(c => 
-        c.name.toLowerCase() === chordName.toLowerCase() &&
-        c.instrument === instrument &&
-        c.tuning === tuning
-      );
-    }
-  }
-  
   return chord || null;
 }
 
 /**
- * Get all chords for a specific instrument and tuning
- * @param {string} instrument - Instrument type
- * @param {string} tuning - Tuning identifier
- * @returns {Array} Array of chord objects
- */
-export function getAllChords(instrument = 'ukulele', tuning = 'ukulele_standard') {
-  return CHORD_SEED_DATA.filter(c => 
-    c.instrument === instrument &&
-    c.tuning === tuning
-  );
-}
-
-/**
  * Get all variations of a chord for an instrument/tuning
- * Includes chords from static seed, database main library, and personal library
+ * Includes chords from database main library and personal library
  * @param {string} chordName - Chord name
  * @param {string} instrument - Instrument type
  * @param {string} tuning - Tuning identifier
@@ -148,14 +104,6 @@ export function getChordVariations(chordName, instrument = 'ukulele', tuning = '
   const { databaseChords = [] } = options;
   
   const variations = [];
-  
-  // Get static seed variations
-  const staticVariations = CHORD_SEED_DATA.filter(c => 
-    c.name === chordName &&
-    c.instrument === instrument &&
-    c.tuning === tuning
-  );
-  variations.push(...staticVariations);
   
   // Get database variations (main library)
   const mainVariations = databaseChords.filter(c => 
@@ -176,9 +124,17 @@ export function getChordVariations(chordName, instrument = 'ukulele', tuning = '
   variations.push(...personalVariations);
   
   // Deduplicate by frets (keep unique fret patterns)
+  // Normalize frets to string for comparison (handles both string and array formats)
+  const normalizeFrets = (frets) => {
+    if (Array.isArray(frets)) {
+      return frets.join(',');
+    }
+    return String(frets);
+  };
+  
   const seenFrets = new Set();
   const uniqueVariations = variations.filter(chord => {
-    const fretsKey = `${chord.frets}-${chord.instrument}-${chord.tuning}`;
+    const fretsKey = `${normalizeFrets(chord.frets)}-${chord.instrument}-${chord.tuning}`;
     if (seenFrets.has(fretsKey)) {
       return false;
     }
@@ -201,19 +157,13 @@ export function getChordVariations(chordName, instrument = 'ukulele', tuning = '
 export function getChordNames(instrument = 'ukulele', tuning = 'ukulele_standard', options = {}) {
   const { databaseChords = [] } = options;
   
-  // Get static chords
-  const staticChords = getAllChords(instrument, tuning);
-  const staticNames = staticChords.map(c => c.name);
-  
   // Get database chord names (main + personal)
   const dbNames = databaseChords
     .filter(c => c.instrument === instrument && c.tuning === tuning)
     .map(c => c.name);
   
-  // Combine and deduplicate
-  const allNames = [...new Set([...staticNames, ...dbNames])];
-  
-  // Return sorted
+  // Deduplicate and return sorted
+  const allNames = [...new Set(dbNames)];
   return allNames.sort((a, b) => a.localeCompare(b));
 }
 
@@ -245,7 +195,7 @@ export function searchChordNames(
 }
 
 /**
- * Get all available chords combining static seed data and database chords
+ * Get all available chords from database
  * @param {string} instrument - Instrument type
  * @param {string} tuning - Tuning identifier
  * @param {Object} options - Additional options
@@ -254,13 +204,6 @@ export function searchChordNames(
  */
 export function getAllAvailableChords(instrument = 'ukulele', tuning = 'ukulele_standard', options = {}) {
   const { databaseChords = [] } = options;
-  
-  // Get static chords
-  const staticChords = getAllChords(instrument, tuning).map(c => ({
-    ...c,
-    source: 'static',
-    isPersonal: false,
-  }));
   
   // Get database chords
   const dbChords = databaseChords
@@ -271,24 +214,7 @@ export function getAllAvailableChords(instrument = 'ukulele', tuning = 'ukulele_
       isPersonal: c.libraryType === 'personal',
     }));
   
-  // Combine and deduplicate by name (prefer database over static for same name)
-  const chordMap = new Map();
-  
-  // Add static chords first
-  staticChords.forEach(chord => {
-    const key = `${chord.name}-${chord.instrument}-${chord.tuning}`;
-    if (!chordMap.has(key)) {
-      chordMap.set(key, chord);
-    }
-  });
-  
-  // Add database chords (will override static if same name)
-  dbChords.forEach(chord => {
-    const key = `${chord.name}-${chord.instrument}-${chord.tuning}`;
-    chordMap.set(key, chord);
-  });
-  
-  return Array.from(chordMap.values());
+  return dbChords;
 }
 
 

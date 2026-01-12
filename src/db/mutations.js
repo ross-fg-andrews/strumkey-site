@@ -430,20 +430,59 @@ export async function createChords(chords) {
 
 /**
  * Create a personal library chord
- * @param {Object} chordData - Chord data (name, frets, instrument, tuning, variation)
+ * @param {Object} chordData - Chord data (name, key, suffix, frets, fingers, baseFret, barres, position, instrument, tuning)
  * @param {string} userId - User ID who owns the chord
  * @returns {Promise} Transaction promise
  */
 export async function createPersonalChord(chordData, userId) {
-  const { name, frets, instrument, tuning, variation = 'standard' } = chordData;
+  const { 
+    name, 
+    key, 
+    suffix, 
+    frets, 
+    fingers, 
+    baseFret = 1, 
+    barres = [], 
+    position = 1,
+    instrument, 
+    tuning 
+  } = chordData;
+  
+  // Convert frets to array if it's a string (backward compatibility)
+  let fretsArray = frets;
+  if (typeof frets === 'string') {
+    fretsArray = frets.split('').map(f => {
+      const lower = f.toLowerCase();
+      if (lower === 'x') return null;
+      const num = parseInt(f, 10);
+      return isNaN(num) ? null : num;
+    });
+  }
+  
+  // Convert fingers to array if needed
+  let fingersArray = fingers;
+  if (!fingersArray && Array.isArray(fretsArray)) {
+    fingersArray = [...fretsArray]; // Default to copy of frets
+  }
+  if (typeof fingersArray === 'string') {
+    fingersArray = fingersArray.split('').map(f => {
+      const num = parseInt(f, 10);
+      return isNaN(num) ? 0 : num;
+    });
+  }
   
   return db.transact(
     db.tx.chords[id()].update({
       name: name.trim(),
-      frets,
+      key: key || name.trim().charAt(0).toUpperCase(), // Fallback to first letter if key not provided
+      suffix: suffix || 'custom',
+      frets: fretsArray,
+      fingers: fingersArray || [],
+      baseFret,
+      barres: Array.isArray(barres) ? barres : [],
+      position,
       instrument,
       tuning,
-      variation,
       libraryType: 'personal',
       createdBy: userId,
     })
@@ -452,19 +491,58 @@ export async function createPersonalChord(chordData, userId) {
 
 /**
  * Create a main library chord (user-contributed)
- * @param {Object} chordData - Chord data (name, frets, instrument, tuning, variation)
+ * @param {Object} chordData - Chord data (name, key, suffix, frets, fingers, baseFret, barres, position, instrument, tuning)
  * @returns {Promise} Transaction promise
  */
 export async function createMainLibraryChord(chordData) {
-  const { name, frets, instrument, tuning, variation = 'standard' } = chordData;
+  const { 
+    name, 
+    key, 
+    suffix, 
+    frets, 
+    fingers, 
+    baseFret = 1, 
+    barres = [], 
+    position = 1,
+    instrument, 
+    tuning 
+  } = chordData;
+  
+  // Convert frets to array if it's a string (backward compatibility)
+  let fretsArray = frets;
+  if (typeof frets === 'string') {
+    fretsArray = frets.split('').map(f => {
+      const lower = f.toLowerCase();
+      if (lower === 'x') return null;
+      const num = parseInt(f, 10);
+      return isNaN(num) ? null : num;
+    });
+  }
+  
+  // Convert fingers to array if needed
+  let fingersArray = fingers;
+  if (!fingersArray && Array.isArray(fretsArray)) {
+    fingersArray = [...fretsArray]; // Default to copy of frets
+  }
+  if (typeof fingersArray === 'string') {
+    fingersArray = fingersArray.split('').map(f => {
+      const num = parseInt(f, 10);
+      return isNaN(num) ? 0 : num;
+    });
+  }
   
   return db.transact(
     db.tx.chords[id()].update({
       name: name.trim(),
-      frets,
+      key: key || name.trim().charAt(0).toUpperCase(), // Fallback to first letter if key not provided
+      suffix: suffix || 'custom',
+      frets: fretsArray,
+      fingers: fingersArray || [],
+      baseFret,
+      barres: Array.isArray(barres) ? barres : [],
+      position,
       instrument,
       tuning,
-      variation,
       libraryType: 'main',
     })
   );

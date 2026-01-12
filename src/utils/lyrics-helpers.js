@@ -1,4 +1,3 @@
-import { CHORD_SEED_DATA } from '../data/chord-seed';
 
 /**
  * Parse lyrics text into lines and extract chords
@@ -381,18 +380,6 @@ export function lyricsWithChordsToText(lyrics, chords = []) {
  */
 export function isChordInMainLibrary(chordName, instrument, tuning, options = {}) {
   const { mainLibraryChords = [] } = options;
-  
-  // Check static seed data (imported at top level)
-  try {
-    const inStatic = CHORD_SEED_DATA.some(c => 
-      c.name === chordName &&
-      c.instrument === instrument &&
-      c.tuning === tuning
-    );
-    if (inStatic) return true;
-  } catch (e) {
-    console.warn('Error checking static library:', e);
-  }
   
   // Check database main library
   const inDatabase = mainLibraryChords.some(c =>

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { getChordNames, findChord, getChordVariations, getAllChords } from '../utils/chord-library';
+import { getChordNames, findChord, getChordVariations } from '../utils/chord-library';
 import { useAllDatabaseChords } from '../db/queries';
 import CustomChordModal from './CustomChordModal';
 import { createPersonalChord } from '../db/mutations';
@@ -156,14 +156,7 @@ export default function StyledChordEditor({
   const allChordVariations = useMemo(() => {
     const variations = [];
     
-    // Get static seed chords FIRST - always include all of them
-    const staticChords = getAllChords(instrument, tuning);
-    staticChords.forEach(c => {
-      variations.push({ ...c, source: 'static' });
-    });
-    
     // Get database chords (main + personal)
-    // Add ALL of them as separate entries, even if they have same name+frets as static
     const dbChordsList = dbChords
       .filter(c => c.instrument === instrument && c.tuning === tuning)
       .map(c => {
@@ -1057,6 +1050,7 @@ export default function StyledChordEditor({
                             <div className="flex-shrink-0">
                               <ChordDiagram
                                 frets={chordFrets}
+                                baseFret={chordObj.baseFret}
                                 chordName=""
                                 instrument={instrument}
                                 tuning={tuning}
@@ -1091,7 +1085,6 @@ export default function StyledChordEditor({
                       const chordName = chordObj.name || chordObj;
                       const chordFrets = chordObj.frets;
                       const isPersonal = chordObj.source === 'personal';
-                      const isStatic = chordObj.source === 'static';
                       
                       return (
                         <button
@@ -1111,6 +1104,7 @@ export default function StyledChordEditor({
                             <div className="flex-shrink-0">
                               <ChordDiagram
                                 frets={chordFrets}
+                                baseFret={chordObj.baseFret}
                                 chordName=""
                                 instrument={instrument}
                                 tuning={tuning}
@@ -1122,11 +1116,6 @@ export default function StyledChordEditor({
                             {isPersonal && (
                               <span className="text-xs text-yellow-600 flex-shrink-0" title="Personal library">
                                 ⭐
-                              </span>
-                            )}
-                            {isStatic && !isPersonal && (
-                              <span className="text-xs text-gray-400 flex-shrink-0" title="Standard library">
-                                📚
                               </span>
                             )}
                           </div>
@@ -1177,6 +1166,7 @@ export default function StyledChordEditor({
         instrument={instrument}
         tuning={tuning}
         userId={userId}
+        databaseChords={dbChords}
       />
     </div>
   );
