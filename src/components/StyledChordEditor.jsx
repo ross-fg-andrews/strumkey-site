@@ -113,8 +113,8 @@ export default function StyledChordEditor({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
   const [showCustomChordModal, setShowCustomChordModal] = useState(false);
-  // Track selected variations for chords (chordName -> variation)
-  const [selectedVariations, setSelectedVariations] = useState(new Map());
+  // Track selected positions for chords (chordName -> position number)
+  const [selectedPositions, setSelectedPositions] = useState(new Map());
 
   // Get database chords (main + personal) if userId provided
   const { data: dbChordsData } = useAllDatabaseChords(userId, instrument, tuning);
@@ -129,18 +129,18 @@ export default function StyledChordEditor({
     );
   }, [dbChords]);
 
-  // Get chord data for a chord name, using selected variation if available
+  // Get chord data for a chord name, using selected position if available
   const getChordData = (chordName) => {
-    const selectedVariation = selectedVariations.get(chordName) || 'standard';
+    const selectedPosition = selectedPositions.get(chordName) || 1;
     
-    // Try to find chord with selected variation
-    let chord = findChord(chordName, instrument, tuning, selectedVariation, {
+    // Try to find chord with selected position
+    let chord = findChord(chordName, instrument, tuning, selectedPosition, {
       databaseChords: dbChords,
     });
     
-    // If not found with selected variation, try standard
-    if (!chord && selectedVariation !== 'standard') {
-      chord = findChord(chordName, instrument, tuning, 'standard', {
+    // If not found with selected position, try position 1 (standard)
+    if (!chord && selectedPosition !== 1) {
+      chord = findChord(chordName, instrument, tuning, 1, {
         databaseChords: dbChords,
       });
     }
@@ -779,12 +779,12 @@ export default function StyledChordEditor({
       }
     }
 
-    // Remember the selected variation for this chord
+    // Remember the selected position for this chord
     const chordData = getChordData(chordName);
-    if (chordData?.variation) {
-      setSelectedVariations(prev => {
+    if (chordData?.position) {
+      setSelectedPositions(prev => {
         const newMap = new Map(prev);
-        newMap.set(chordName, chordData.variation);
+        newMap.set(chordName, chordData.position);
         return newMap;
       });
     }
