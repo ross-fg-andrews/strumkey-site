@@ -27,8 +27,9 @@ function getEnvVar(name) {
   }
 }
 
-const APP_ID = getEnvVar('VITE_INSTANTDB_APP_ID') || process.env.VITE_INSTANTDB_APP_ID;
-const ADMIN_TOKEN = getEnvVar('INSTANTDB_ADMIN_TOKEN') || process.env.INSTANTDB_ADMIN_TOKEN;
+// Prioritize environment variables over .env file for flexibility
+const APP_ID = process.env.VITE_INSTANTDB_APP_ID || getEnvVar('VITE_INSTANTDB_APP_ID');
+const ADMIN_TOKEN = process.env.INSTANTDB_ADMIN_TOKEN || getEnvVar('INSTANTDB_ADMIN_TOKEN');
 
 if (!APP_ID || !ADMIN_TOKEN) {
   console.error('Error: VITE_INSTANTDB_APP_ID and INSTANTDB_ADMIN_TOKEN must be set');
@@ -191,6 +192,7 @@ async function migrateChords() {
     console.log('📤 Importing chords via HTTP API...');
     
     // Convert to HTTP API format: ["update", "chords", id, {...data}]
+    // Note: "update" in InstantDB HTTP API is an upsert (creates if doesn't exist)
     const steps = transformedChords.map(chord => {
       const { id, ...data } = chord;
       return [
