@@ -76,6 +76,24 @@ export default function ChordDiagram({
     return null;
   }
 
+  // Convert relative fret positions to absolute positions if baseFret is provided
+  // Fret positions in the database are stored relative to baseFret
+  // Formula: absoluteFret = baseFret + (relativeFret - 1)
+  // Only convert when providedBaseFret is available (for backward compatibility)
+  if (providedBaseFret !== undefined && providedBaseFret !== null && providedBaseFret > 0) {
+    fretArray = fretArray.map(fret => {
+      // Keep 'open' (0) and 'muted' strings as-is - they don't need conversion
+      if (fret === 'open' || fret === 'muted' || fret === 0) {
+        return fret;
+      }
+      // Convert numeric frets from relative to absolute
+      if (typeof fret === 'number' && fret > 0) {
+        return providedBaseFret + (fret - 1);
+      }
+      return fret;
+    });
+  }
+
   const numericFrets = fretArray.filter(f => typeof f === 'number');
   const maxFret = numericFrets.length > 0 ? Math.max(...numericFrets) : 0;
   const minFret = numericFrets.length > 0 ? Math.min(...numericFrets) : 0;
