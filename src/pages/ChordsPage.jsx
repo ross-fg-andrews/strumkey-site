@@ -369,6 +369,7 @@ export default function ChordsPage() {
                         frets={chord.frets}
                         baseFret={chord.baseFret}
                         chordName={chord.name}
+                        position={chord.position}
                         instrument={chord.instrument || DEFAULT_INSTRUMENT}
                         tuning={chord.tuning || DEFAULT_TUNING}
                       />

@@ -29,13 +29,15 @@ function getStringLabels(instrument, tuning) {
  * @param {string} instrument - Instrument type (default: 'ukulele')
  * @param {string} tuning - Tuning identifier (default: 'ukulele_standard')
  * @param {number} baseFret - Optional base fret number (if provided, used instead of calculating from frets)
+ * @param {number} position - Optional position number (1 = most common, 2+ = alternate positions)
  */
 export default function ChordDiagram({ 
   frets, 
   chordName, 
   instrument = 'ukulele',
   tuning = 'ukulele_standard',
-  baseFret: providedBaseFret
+  baseFret: providedBaseFret,
+  position
 }) {
   if (!frets) {
     return null;
@@ -153,8 +155,13 @@ export default function ChordDiagram({
       {/* Chord label above diagram - centered over SVG width (68px for 4 strings) */}
       {chordName && (
         <div className="flex justify-center mb-0.5 w-full">
-          <div className="inline-block px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium">
-            {chordName}
+          <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium">
+            <span>{chordName}</span>
+            {position > 1 && (
+              <span className="inline-flex items-center justify-center rounded-full bg-primary-700 text-white text-xs font-medium leading-[1em] min-w-[1em] px-1">
+                {position}
+              </span>
+            )}
           </div>
         </div>
       )}

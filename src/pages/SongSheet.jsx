@@ -244,20 +244,25 @@ export default function SongSheet() {
     }
   }, [song?.chords]);
   
-  // Extract unique chord names from the song (must be before early returns)
-  const uniqueChordNames = useMemo(() => {
+  // Extract unique chord name-position pairs from the song (must be before early returns)
+  const uniqueChordPairs = useMemo(() => {
     if (!chords || chords.length === 0) return [];
-    const chordNames = new Set();
+    const chordPairs = new Map(); // Use Map with key "name:position" to track unique pairs
     chords.forEach(chord => {
       if (chord.chord) {
         // Trim and normalize chord name to ensure proper matching
         const normalizedChord = chord.chord.trim();
         if (normalizedChord) {
-          chordNames.add(normalizedChord);
+          // Get position from chord object (parsed from chordPosition field, default to 1)
+          const position = chord.chordPosition || 1;
+          const key = `${normalizedChord}:${position}`;
+          if (!chordPairs.has(key)) {
+            chordPairs.set(key, { name: normalizedChord, position });
+          }
         }
       }
     });
-    return Array.from(chordNames);
+    return Array.from(chordPairs.values());
   }, [chords]);
 
   // Parse embedded chords from song data
@@ -276,14 +281,14 @@ export default function SongSheet() {
   const { data: dbChordsData } = useAllDatabaseChords(user?.id, instrument, tuning);
   const dbChords = dbChordsData?.chords || [];
 
-  // Get chord diagrams data for unique chords (must be before early returns)
+  // Get chord diagrams data for unique chord-position pairs (must be before early returns)
   const chordDiagrams = useMemo(() => {
-    if (!uniqueChordNames || uniqueChordNames.length === 0) return [];
+    if (!uniqueChordPairs || uniqueChordPairs.length === 0) return [];
     
-    return uniqueChordNames
-      .map(chordName => {
-        // Try to find chord in order: embedded, database personal, database main
-        const chordData = findChord(chordName, instrument, tuning, 'standard', {
+    return uniqueChordPairs
+      .map(({ name: chordName, position }) => {
+        // Try to find chord with specific position in order: embedded, database personal, database main
+        const chordData = findChord(chordName, instrument, tuning, position, {
           databaseChords: dbChords,
           embeddedChords: embeddedChords,
         });
@@ -291,6 +296,7 @@ export default function SongSheet() {
         if (chordData && chordData.frets) {
           return {
             name: chordName,
+            position: position,
             frets: chordData.frets,
             baseFret: chordData.baseFret, // Pass baseFret if available
             instrument: chordData.instrument || instrument,
@@ -300,7 +306,7 @@ export default function SongSheet() {
         return null;
       })
       .filter(Boolean);
-  }, [uniqueChordNames, instrument, tuning, dbChords, embeddedChords]);
+  }, [uniqueChordPairs, instrument, tuning, dbChords, embeddedChords]);
 
   // Track container width using ResizeObserver (detects zoom and resize) - MUST be before early returns
   const containerRef = useRef(null);
@@ -1311,7 +1317,21 @@ export default function SongSheet() {
                   <p key={i} className="text-base leading-relaxed">
                     {line === '' ? '\u00A0' : line.split(/\[([^\]]+)\]/).map((part, j) => {
                       if (j % 2 === 1) {
-                        return <span key={j} className="inline-block px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium">{part}</span>;
+                        // Parse position from chord name format: "C:2" -> chord "C", position 2
+                        const positionMatch = part.match(/^(.+):(\d+)$/);
+                        const chordName = positionMatch ? positionMatch[1].trim() : part;
+                        const chordPosition = positionMatch ? parseInt(positionMatch[2], 10) : 1;
+                        
+                        return (
+                          <span key={j} className="inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium">
+                            <span>{chordName}</span>
+                            {chordPosition > 1 && (
+                              <span className="inline-flex items-center justify-center rounded-full bg-primary-700 text-white text-xs font-medium leading-[1em] min-w-[1em] px-1">
+                                {chordPosition}
+                              </span>
+                            )}
+                          </span>
+                        );
                       }
                       return <span key={j}>{part}</span>;
                     })}
@@ -1349,12 +1369,22 @@ export default function SongSheet() {
                           if (segment.type === 'space') {
                             return <span key={idx}>{segment.content}</span>;
                           } else {
+                            // Parse position from chord name format: "C:2" -> chord "C", position 2
+                            const positionMatch = segment.content.match(/^(.+):(\d+)$/);
+                            const chordName = positionMatch ? positionMatch[1].trim() : segment.content;
+                            const chordPosition = positionMatch ? parseInt(positionMatch[2], 10) : 1;
+                            
                             return (
                               <span
                                 key={idx}
-                                className="inline-block px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium -mx-2"
+                                className="inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium -mx-2"
                               >
-                                {segment.content}
+                                <span>{chordName}</span>
+                                {chordPosition > 1 && (
+                                  <span className="inline-flex items-center justify-center rounded-full bg-primary-700 text-white text-xs font-medium leading-[1em] min-w-[1em] px-1">
+                                    {chordPosition}
+                                  </span>
+                                )}
                               </span>
                             );
                           }
@@ -1377,12 +1407,13 @@ export default function SongSheet() {
           >
             {/* Desktop: flex wrap layout */}
             <div className="hidden md:flex flex-wrap gap-x-3 gap-y-6 justify-start">
-              {chordDiagrams.map(({ name, frets, baseFret, instrument: chordInstrument, tuning: chordTuning }) => (
+              {chordDiagrams.map(({ name, frets, baseFret, position, instrument: chordInstrument, tuning: chordTuning }) => (
                 <ChordDiagram 
-                  key={name}
+                  key={`${name}-${position}`}
                   frets={frets} 
                   baseFret={baseFret}
                   chordName={name}
+                  position={position}
                   instrument={chordInstrument || instrument}
                   tuning={chordTuning || tuning}
                 />
@@ -1390,19 +1421,20 @@ export default function SongSheet() {
             </div>
             {/* Mobile: horizontal scrollable line */}
             <div className="md:hidden flex gap-x-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
-              {chordDiagrams.map(({ name, frets, baseFret, instrument: chordInstrument, tuning: chordTuning }) => (
+              {chordDiagrams.map(({ name, frets, baseFret, position, instrument: chordInstrument, tuning: chordTuning }) => (
                 <ChordDiagram 
-                  key={name}
+                  key={`${name}-${position}`}
                   frets={frets} 
                   baseFret={baseFret}
                   chordName={name}
+                  position={position}
                   instrument={chordInstrument || instrument}
                   tuning={chordTuning || tuning}
                 />
               ))}
             </div>
           </div>
-        ) : uniqueChordNames.length > 0 ? (
+        ) : uniqueChordPairs.length > 0 ? (
           // Show message if chords exist but don't match
           <div 
             className="mb-6 md:mb-0 md:flex-shrink-0 order-1 md:order-2"
@@ -1411,7 +1443,7 @@ export default function SongSheet() {
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
               <h3 className="text-sm font-semibold mb-2">Chord Charts</h3>
               <p className="text-xs text-gray-600">
-                Some chords in this song don't have diagrams available: {uniqueChordNames.join(', ')}
+                Some chords in this song don't have diagrams available: {uniqueChordPairs.map(p => p.position > 1 ? `${p.name}:${p.position}` : p.name).join(', ')}
               </p>
             </div>
           </div>

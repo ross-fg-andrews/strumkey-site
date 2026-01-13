@@ -221,15 +221,16 @@ export default function StyledChordEditor({
     return usedFilteredNames.flatMap(chordName => {
       const variations = getVariationsForName(chordName);
       if (variations.length > 0) {
-        return variations;
+        // Ensure all variations have position property
+        return variations.map(v => ({ ...v, position: v.position || 1 }));
       }
       const fallbackChord = findChord(chordName, instrument, tuning, 'standard', {
         databaseChords: dbChords,
       });
       if (fallbackChord) {
-        return [{ ...fallbackChord, source: fallbackChord.libraryType === 'personal' ? 'personal' : 'main' }];
+        return [{ ...fallbackChord, source: fallbackChord.libraryType === 'personal' ? 'personal' : 'main', position: fallbackChord.position || 1 }];
       }
-      return [{ name: chordName, frets: null }];
+      return [{ name: chordName, frets: null, position: 1 }];
     });
   }, [usedFilteredNames, getVariationsForName, instrument, tuning, dbChords]);
 
@@ -237,15 +238,16 @@ export default function StyledChordEditor({
     return libraryFilteredNames.flatMap(chordName => {
       const variations = getVariationsForName(chordName);
       if (variations.length > 0) {
-        return variations;
+        // Ensure all variations have position property
+        return variations.map(v => ({ ...v, position: v.position || 1 }));
       }
       const fallbackChord = findChord(chordName, instrument, tuning, 'standard', {
         databaseChords: dbChords,
       });
       if (fallbackChord) {
-        return [{ ...fallbackChord, source: fallbackChord.libraryType === 'personal' ? 'personal' : 'main' }];
+        return [{ ...fallbackChord, source: fallbackChord.libraryType === 'personal' ? 'personal' : 'main', position: fallbackChord.position || 1 }];
       }
-      return [{ name: chordName, frets: null }];
+      return [{ name: chordName, frets: null, position: 1 }];
     });
   }, [libraryFilteredNames, getVariationsForName, instrument, tuning, dbChords]);
 
@@ -574,12 +576,31 @@ export default function StyledChordEditor({
       parts.forEach((part) => {
         if (part.match(/^\[([^\]]+)\]$/)) {
           // This is a chord
-          const chordName = part.slice(1, -1); // Remove brackets
+          const chordText = part.slice(1, -1); // Remove brackets
+          
+          // Parse position from chord name format: "C:2" -> chord "C", position 2
+          const positionMatch = chordText.match(/^(.+):(\d+)$/);
+          const chordName = positionMatch ? positionMatch[1].trim() : chordText;
+          const chordPosition = positionMatch ? parseInt(positionMatch[2], 10) : 1;
+          
           const span = document.createElement('span');
-          span.className = 'inline-block px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium';
-          span.textContent = chordName;
+          span.className = 'inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium';
           span.setAttribute('data-chord', 'true');
           span.setAttribute('contenteditable', 'false'); // Prevent editing within chord spans
+          
+          // Add chord name text
+          const chordNameSpan = document.createElement('span');
+          chordNameSpan.textContent = chordName;
+          span.appendChild(chordNameSpan);
+          
+          // Add position indicator if position > 1
+          if (chordPosition > 1) {
+            const positionSpan = document.createElement('span');
+            positionSpan.className = 'inline-flex items-center justify-center rounded-full bg-primary-700 text-white text-xs font-medium leading-[1em] min-w-[1em] px-1';
+            positionSpan.textContent = chordPosition.toString();
+            span.appendChild(positionSpan);
+          }
+          
           fragment.appendChild(span);
         } else if (part) {
           // Regular text
@@ -660,7 +681,9 @@ export default function StyledChordEditor({
           const selectedChord = allFiltered[chordIndex];
           if (selectedChord) {
             const chordName = selectedChord.name || selectedChord;
-            insertChord(chordName);
+            const chordPosition = selectedChord.position;
+            // Pass position directly to insertChord to avoid state timing issues
+            insertChord(chordName, chordPosition || null);
           }
         }
       } else if (e.key === 'Escape') {
@@ -747,7 +770,7 @@ export default function StyledChordEditor({
     onChange({ target: { value: text } });
   };
 
-  const insertChord = (chordName) => {
+  const insertChord = (chordName, explicitPosition = null) => {
     if (!editorRef.current) return;
     
     // Get text directly from editor to ensure we have the most current value
@@ -779,17 +802,24 @@ export default function StyledChordEditor({
       }
     }
 
-    // Remember the selected position for this chord
+    // Get the selected position for this chord
+    // Priority: explicitPosition (passed directly) > storedPosition > chordData position > default 1
+    const storedPosition = selectedPositions.get(chordName);
     const chordData = getChordData(chordName);
-    if (chordData?.position) {
+    let chordPosition = explicitPosition !== null ? explicitPosition : (storedPosition || chordData?.position || 1);
+    
+    // Ensure position is stored
+    if (chordPosition && chordPosition > 1) {
       setSelectedPositions(prev => {
         const newMap = new Map(prev);
-        newMap.set(chordName, chordData.position);
+        newMap.set(chordName, chordPosition);
         return newMap;
       });
     }
 
-    const newText = before + spaceBefore + `[${chordName}]` + spaceAfter + after;
+    // Format chord with position suffix if position > 1: [C:2], otherwise just [C]
+    const chordText = chordPosition > 1 ? `${chordName}:${chordPosition}` : chordName;
+    const newText = before + spaceBefore + `[${chordText}]` + spaceAfter + after;
     
     // Update DOM directly and skip sync to prevent re-render interference
     skipSyncRef.current = true;
@@ -798,7 +828,7 @@ export default function StyledChordEditor({
     onChange({ target: { value: newText } });
 
     setTimeout(() => {
-      const newCursorPos = insertPos + spaceBefore.length + chordName.length + 2 + spaceAfter.length;
+      const newCursorPos = insertPos + spaceBefore.length + chordText.length + 2 + spaceAfter.length;
       setCursorPosition(newCursorPos);
       editorRef.current?.focus();
     }, 0);
@@ -807,9 +837,21 @@ export default function StyledChordEditor({
     setQuery('');
   };
 
-  const handleChordClick = (chordName) => {
+  const handleChordClick = (chordName, chordPosition = null) => {
     if (!chordName) return;
-    insertChord(chordName);
+    // If position is provided, use it; otherwise get from chord data
+    if (chordPosition !== null && chordPosition !== undefined) {
+      // Store the position for this chord
+      setSelectedPositions(prev => {
+        const newMap = new Map(prev);
+        newMap.set(chordName, chordPosition);
+        return newMap;
+      });
+      // Pass position directly to insertChord to avoid state timing issues
+      insertChord(chordName, chordPosition);
+    } else {
+      insertChord(chordName);
+    }
   };
 
   const insertElement = (elementType) => {
@@ -1040,7 +1082,7 @@ export default function StyledChordEditor({
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            handleChordClick(chordName);
+                            handleChordClick(chordName, chordObj.position);
                           }}
                           className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
                             isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
@@ -1059,6 +1101,13 @@ export default function StyledChordEditor({
                           )}
                           <div className="flex-1 flex items-center gap-2 min-w-0">
                             <span className="font-medium">{chordName}</span>
+                            {chordObj.position > 1 && (
+                              <span className={`inline-flex items-center justify-center rounded-full text-white text-xs font-medium leading-[1em] min-w-[1em] px-1 ${
+                                isSelected ? 'bg-primary-700' : 'bg-gray-900'
+                              }`}>
+                                {chordObj.position}
+                              </span>
+                            )}
                             {isPersonal && (
                               <span className="text-xs text-yellow-600 flex-shrink-0" title="Personal library">
                                 ⭐
@@ -1094,7 +1143,8 @@ export default function StyledChordEditor({
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            handleChordClick(chordName);
+                            console.log('[StyledChordEditor] Clicked chord button (library):', { chordName, chordObj, position: chordObj.position });
+                            handleChordClick(chordName, chordObj.position);
                           }}
                           className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
                             isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
@@ -1113,6 +1163,13 @@ export default function StyledChordEditor({
                           )}
                           <div className="flex-1 flex items-center gap-2 min-w-0">
                             <span className="font-medium">{chordName}</span>
+                            {chordObj.position > 1 && (
+                              <span className={`inline-flex items-center justify-center rounded-full text-white text-xs font-medium leading-[1em] min-w-[1em] px-1 ${
+                                isSelected ? 'bg-primary-700' : 'bg-gray-900'
+                              }`}>
+                                {chordObj.position}
+                              </span>
+                            )}
                             {isPersonal && (
                               <span className="text-xs text-yellow-600 flex-shrink-0" title="Personal library">
                                 ⭐

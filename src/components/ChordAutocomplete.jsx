@@ -346,7 +346,17 @@ export default function ChordAutocomplete({
           const chordIndex = selectedIndex - filteredElements.length;
           const allFiltered = [...usedFiltered, ...libraryFiltered];
           if (allFiltered[chordIndex]) {
-            insertChord(allFiltered[chordIndex].name || allFiltered[chordIndex]);
+            const selectedChord = allFiltered[chordIndex];
+            const chordName = selectedChord.name || selectedChord;
+            const chordPosition = selectedChord.position;
+            if (chordPosition) {
+              setSelectedPositions(prev => {
+                const newMap = new Map(prev);
+                newMap.set(chordName, chordPosition);
+                return newMap;
+              });
+            }
+            insertChord(chordName);
           }
         }
       } else if (e.key === 'Escape') {
@@ -425,7 +435,7 @@ export default function ChordAutocomplete({
     }
   };
 
-  const insertChord = (chordName) => {
+  const insertChord = (chordName, explicitPosition = null) => {
     const textarea = textareaRef.current;
     if (!textarea) return;
 
@@ -465,22 +475,29 @@ export default function ChordAutocomplete({
     }
     // If within word, no spaces are added (both remain empty)
 
-    // Remember the selected position for this chord
+    // Get the selected position for this chord
+    // Priority: explicitPosition (passed directly) > storedPosition > chordData position > default 1
+    const storedPosition = selectedPositions.get(chordName);
     const chordData = getChordData(chordName);
-    if (chordData?.position) {
+    let chordPosition = explicitPosition !== null ? explicitPosition : (storedPosition || chordData?.position || 1);
+    
+    // Ensure position is stored
+    if (chordPosition && chordPosition > 1) {
       setSelectedPositions(prev => {
         const newMap = new Map(prev);
-        newMap.set(chordName, chordData.position);
+        newMap.set(chordName, chordPosition);
         return newMap;
       });
     }
 
-    const newText = before + spaceBefore + `[${chordName}]` + spaceAfter + after;
+    // Format chord with position suffix if position > 1: [C:2], otherwise just [C]
+    const chordText = chordPosition > 1 ? `${chordName}:${chordPosition}` : chordName;
+    const newText = before + spaceBefore + `[${chordText}]` + spaceAfter + after;
     onChange({ target: { value: newText } });
 
     // Set cursor position after inserted chord (account for added spaces)
     setTimeout(() => {
-      const newCursorPos = validPos + spaceBefore.length + chordName.length + 2 + spaceAfter.length; // +2 for "["
+      const newCursorPos = validPos + spaceBefore.length + chordText.length + 2 + spaceAfter.length; // +2 for "["
       textarea.setSelectionRange(newCursorPos, newCursorPos);
       textarea.focus();
     }, 0);
@@ -489,8 +506,20 @@ export default function ChordAutocomplete({
     setQuery('');
   };
 
-  const handleChordClick = (chordName) => {
-    insertChord(chordName);
+  const handleChordClick = (chordName, chordPosition = null) => {
+    // If position is provided, use it; otherwise get from chord data
+    if (chordPosition !== null && chordPosition !== undefined) {
+      // Store the position for this chord
+      setSelectedPositions(prev => {
+        const newMap = new Map(prev);
+        newMap.set(chordName, chordPosition);
+        return newMap;
+      });
+      // Pass position directly to insertChord to avoid state timing issues
+      insertChord(chordName, chordPosition);
+    } else {
+      insertChord(chordName);
+    }
   };
 
   const insertElement = (elementType) => {
@@ -865,7 +894,7 @@ export default function ChordAutocomplete({
                           key={`used-${chordName}-${chordFrets || 'no-frets'}-${index}`}
                           type="button"
                           data-selected={isSelected}
-                          onClick={() => handleChordClick(chordName)}
+                          onClick={() => handleChordClick(chordName, chordObj.position)}
                           className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
                             isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
                           }`}
@@ -883,6 +912,13 @@ export default function ChordAutocomplete({
                           )}
                           <div className="flex-1 flex items-center gap-2 min-w-0">
                             <span className="font-medium">{chordName}</span>
+                            {chordObj.position > 1 && (
+                              <span className={`inline-flex items-center justify-center rounded-full text-white text-xs font-medium leading-[1em] min-w-[1em] px-1 ${
+                                isSelected ? 'bg-primary-700' : 'bg-gray-900'
+                              }`}>
+                                {chordObj.position}
+                              </span>
+                            )}
                             {isPersonal && (
                               <span className="text-xs text-yellow-600 flex-shrink-0" title="Personal library">
                                 ⭐
@@ -915,7 +951,7 @@ export default function ChordAutocomplete({
                           key={`library-${chordName}-${chordFrets || 'no-frets'}-${index}-${chordObj.source || 'unknown'}`}
                           type="button"
                           data-selected={isSelected}
-                          onClick={() => handleChordClick(chordName)}
+                          onClick={() => handleChordClick(chordName, chordObj.position)}
                           className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
                             isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
                           }`}
@@ -933,6 +969,13 @@ export default function ChordAutocomplete({
                           )}
                           <div className="flex-1 flex items-center gap-2 min-w-0">
                             <span className="font-medium">{chordName}</span>
+                            {chordObj.position > 1 && (
+                              <span className={`inline-flex items-center justify-center rounded-full text-white text-xs font-medium leading-[1em] min-w-[1em] px-1 ${
+                                isSelected ? 'bg-primary-700' : 'bg-gray-900'
+                              }`}>
+                                {chordObj.position}
+                              </span>
+                            )}
                             {isPersonal && (
                               <span className="text-xs text-yellow-600 flex-shrink-0" title="Personal library">
                                 ⭐

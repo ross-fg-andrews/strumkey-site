@@ -25,11 +25,23 @@ export function parseLyricsWithChords(text) {
       // Trim chord name to remove any leading/trailing whitespace
       const trimmedChordName = chordName.trim();
       
+      // Parse position from chord name format: "C:2" -> chord "C", position 2
+      // Default to position 1 if no position specified
+      let actualChordName = trimmedChordName;
+      let chordPosition = 1;
+      
+      const positionMatch = trimmedChordName.match(/^(.+):(\d+)$/);
+      if (positionMatch) {
+        actualChordName = positionMatch[1].trim();
+        chordPosition = parseInt(positionMatch[2], 10) || 1;
+      }
+      
       chords.push({
         id: `chord-${chordId++}`,
         lineIndex,
         position,
-        chord: trimmedChordName,
+        chord: actualChordName,
+        chordPosition: chordPosition, // Store the position from the chord name
       });
       removedLength += matchStr.length; // Track how much we've removed
       return ''; // Remove chord marker from text
