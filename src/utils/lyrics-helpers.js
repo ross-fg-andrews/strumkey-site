@@ -81,13 +81,16 @@ export function renderInlineChords(lyrics, chords = []) {
     let result = [];
     let lastIndex = 0;
 
-    lineChords.forEach(({ position, chord }) => {
+    lineChords.forEach(({ position, chord, chordPosition }) => {
       // Add text before chord
       if (position > lastIndex) {
         result.push(line.substring(lastIndex, position));
       }
-      // Add chord marker
-      result.push(`[${chord}]`);
+      // Add chord marker with position if chordPosition > 1
+      const chordMarker = chordPosition && chordPosition > 1 
+        ? `[${chord}:${chordPosition}]` 
+        : `[${chord}]`;
+      result.push(chordMarker);
       lastIndex = position;
     });
 

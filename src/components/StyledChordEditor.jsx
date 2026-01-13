@@ -309,6 +309,31 @@ export default function StyledChordEditor({
     }
   }, [selectedIndex, showDropdown]);
 
+  // Helper function to get chord marker text length from a chord span
+  const getChordMarkerLength = (chordSpan) => {
+    const childSpans = chordSpan.querySelectorAll('span');
+    let chordName = '';
+    let chordPosition = null;
+    
+    if (childSpans.length > 0) {
+      chordName = childSpans[0].textContent.trim();
+      if (childSpans.length > 1) {
+        const positionText = childSpans[1].textContent.trim();
+        const positionNum = parseInt(positionText, 10);
+        if (!isNaN(positionNum) && positionNum > 1) {
+          chordPosition = positionNum;
+        }
+      }
+    } else {
+      chordName = chordSpan.textContent.trim();
+    }
+    
+    // Calculate length: [ChordName] or [ChordName:Position]
+    return chordPosition 
+      ? chordName.length + 1 + chordPosition.toString().length + 2 // [Name:Pos]
+      : chordName.length + 2; // [Name]
+  };
+
   // Get cursor position in contenteditable (accounting for <br> tags and chord spans)
   const getCursorPosition = () => {
     const selection = window.getSelection();
@@ -333,7 +358,7 @@ export default function StyledChordEditor({
         } else if (child.tagName === 'BR') {
           pos += 1; // Count <br> as one character (newline)
         } else if (child.nodeType === Node.ELEMENT_NODE && child.hasAttribute('data-chord')) {
-          pos += child.textContent.length + 2; // [ChordName]
+          pos += getChordMarkerLength(child);
         } else if (child.nodeType === Node.ELEMENT_NODE) {
           // For other elements (like divs), count their text content
           pos += child.textContent.length;
@@ -412,8 +437,8 @@ export default function StyledChordEditor({
       } else if (item.type === 'br') {
         pos += 1; // Count <br> as one character (newline)
       } else if (item.type === 'chord') {
-        // Chord span counts as [ChordName] - bracket + name + bracket
-        pos += item.node.textContent.length + 2;
+        // Calculate chord marker length (accounts for position format)
+        pos += getChordMarkerLength(item.node);
       }
     }
     
@@ -484,8 +509,8 @@ export default function StyledChordEditor({
         }
         currentPos += 1;
       } else if (item.type === 'chord') {
-        // Chord span counts as [ChordName] - bracket + name + bracket
-        const chordLength = item.node.textContent.length + 2;
+        // Calculate chord marker length (accounts for position format)
+        const chordLength = getChordMarkerLength(item.node);
         if (currentPos + chordLength >= pos) {
           // Position is within or right after the chord
           // Place cursor right after the chord span
@@ -536,7 +561,34 @@ export default function StyledChordEditor({
             text += '\n';
           } else if (child.hasAttribute('data-chord')) {
             // This is a styled chord span
-            text += `[${child.textContent}]`;
+            // Extract chord name and position from child spans
+            // Structure: span[data-chord] > span (chord name) + span (position indicator, optional)
+            const childSpans = child.querySelectorAll('span');
+            let chordName = '';
+            let chordPosition = null;
+            
+            if (childSpans.length > 0) {
+              // First span is always the chord name
+              chordName = childSpans[0].textContent.trim();
+              
+              // If there's a second span, it's the position indicator
+              if (childSpans.length > 1) {
+                const positionText = childSpans[1].textContent.trim();
+                const positionNum = parseInt(positionText, 10);
+                if (!isNaN(positionNum) && positionNum > 1) {
+                  chordPosition = positionNum;
+                }
+              }
+            } else {
+              // Fallback: use textContent if structure is unexpected
+              chordName = child.textContent.trim();
+            }
+            
+            // Reconstruct chord marker with position if present
+            const chordMarker = chordPosition 
+              ? `[${chordName}:${chordPosition}]` 
+              : `[${chordName}]`;
+            text += chordMarker;
           } else if (child.tagName === 'DIV' || child.tagName === 'P') {
             // Block elements represent line breaks in contenteditable
             // Add newline before this block element (if there's already content)
