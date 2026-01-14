@@ -250,4 +250,33 @@ export function getAllAvailableChords(instrument = 'ukulele', tuning = 'ukulele_
   return dbChords;
 }
 
+/**
+ * Check if a chord is a "common" chord
+ * Common chords are defined as: Position 1 chords from the main library with suffixes:
+ * - "major" (or empty/null)
+ * - "m" or "minor" (minor)
+ * - exactly "7" (dominant 7th, not "m7", "maj7", etc.)
+ * @param {Object} chord - Chord object with position, libraryType, and suffix fields
+ * @returns {boolean} True if the chord is a common chord
+ */
+export function isCommonChord(chord) {
+  if (!chord) return false;
+  
+  // Must be position 1
+  if (chord.position !== 1) return false;
+  
+  // Must be from main library
+  if (chord.libraryType !== 'main') return false;
+  
+  // Get suffix (normalize to handle empty/null/undefined)
+  const suffix = (chord.suffix || '').trim().toLowerCase();
+  
+  // Common suffixes: empty, "major", "m", "minor", or exactly "7"
+  if (suffix === '' || suffix === 'major') return true;
+  if (suffix === 'm' || suffix === 'minor') return true;
+  if (suffix === '7') return true;
+  
+  return false;
+}
+
 
