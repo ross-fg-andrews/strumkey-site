@@ -10,6 +10,7 @@ import ChordAutocomplete from '../components/ChordAutocomplete';
 import StyledChordEditor from '../components/StyledChordEditor';
 import ChordDiagram from '../components/ChordDiagram';
 import { findChord } from '../utils/chord-library';
+import { formatChordNameForDisplay } from '../utils/chord-formatting';
 import PDFImportModal from '../components/PDFImportModal';
 
 export default function SongSheet() {
@@ -1324,7 +1325,7 @@ export default function SongSheet() {
                         
                         return (
                           <span key={j} className="inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium">
-                            <span>{chordName}</span>
+                            <span>{formatChordNameForDisplay(chordName)}</span>
                             {chordPosition > 1 && (
                               <span className="inline-flex items-center justify-center rounded-full bg-primary-700 text-white text-xs font-medium leading-[1em] min-w-[1em] px-1">
                                 {chordPosition}
@@ -1379,7 +1380,7 @@ export default function SongSheet() {
                                 key={idx}
                                 className="inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium -mx-2"
                               >
-                                <span>{chordName}</span>
+                                <span>{formatChordNameForDisplay(chordName)}</span>
                                 {chordPosition > 1 && (
                                   <span className="inline-flex items-center justify-center rounded-full bg-primary-700 text-white text-xs font-medium leading-[1em] min-w-[1em] px-1">
                                     {chordPosition}

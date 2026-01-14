@@ -5,6 +5,7 @@ import ChordAutocompleteDropdown from './ChordAutocompleteDropdown';
 import CustomChordModal from './CustomChordModal';
 import ChordVariationsModal from './ChordVariationsModal';
 import { createPersonalChord } from '../db/mutations';
+import { formatChordNameForDisplay } from '../utils/chord-formatting';
 
 /**
  * Find the chord pattern at or before the cursor position
@@ -353,27 +354,31 @@ export default function StyledChordEditor({
             text += '\n';
           } else if (child.hasAttribute('data-chord')) {
             // This is a styled chord span
-            // Extract chord name and position from child spans
+            // Extract original chord name from data attribute (preserves stored value)
+            // Extract position from child spans
             // Structure: span[data-chord] > span (chord name) + span (position indicator, optional)
             const childSpans = child.querySelectorAll('span');
-            let chordName = '';
+            let chordName = child.getAttribute('data-chord-name') || ''; // Use stored original name
             let chordPosition = null;
             
-            if (childSpans.length > 0) {
-              // First span is always the chord name
-              chordName = childSpans[0].textContent.trim();
-              
-              // If there's a second span, it's the position indicator
-              if (childSpans.length > 1) {
-                const positionText = childSpans[1].textContent.trim();
-                const positionNum = parseInt(positionText, 10);
-                if (!isNaN(positionNum) && positionNum > 1) {
-                  chordPosition = positionNum;
-                }
+            // If data attribute is missing, fall back to reading from display (for backward compatibility)
+            if (!chordName) {
+              if (childSpans.length > 0) {
+                // First span is the formatted chord name (display)
+                chordName = childSpans[0].textContent.trim();
+              } else {
+                // Fallback: use textContent if structure is unexpected
+                chordName = child.textContent.trim();
               }
-            } else {
-              // Fallback: use textContent if structure is unexpected
-              chordName = child.textContent.trim();
+            }
+            
+            // Extract position from child spans
+            if (childSpans.length > 1) {
+              const positionText = childSpans[1].textContent.trim();
+              const positionNum = parseInt(positionText, 10);
+              if (!isNaN(positionNum) && positionNum > 1) {
+                chordPosition = positionNum;
+              }
             }
             
             // Reconstruct chord marker with position if present
@@ -430,11 +435,12 @@ export default function StyledChordEditor({
           const span = document.createElement('span');
           span.className = 'inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium';
           span.setAttribute('data-chord', 'true');
+          span.setAttribute('data-chord-name', chordName); // Store original chord name for reconstruction
           span.setAttribute('contenteditable', 'false'); // Prevent editing within chord spans
           
-          // Add chord name text
+          // Add chord name text (formatted for display)
           const chordNameSpan = document.createElement('span');
-          chordNameSpan.textContent = chordName;
+          chordNameSpan.textContent = formatChordNameForDisplay(chordName);
           span.appendChild(chordNameSpan);
           
           // Add position indicator if position > 1

@@ -1,6 +1,7 @@
 import { useRef, useEffect } from 'react';
 import ChordDiagram from './ChordDiagram';
 import { normalizeQuery } from '../utils/chord-autocomplete-helpers';
+import { formatChordNameForDisplay } from '../utils/chord-formatting';
 
 /**
  * Shared dropdown component for chord autocomplete
@@ -128,7 +129,7 @@ export default function ChordAutocompleteDropdown({
                         </div>
                       )}
                       <div className="flex-1 flex items-center gap-2 min-w-0">
-                        <span className="font-medium">{chordName}</span>
+                        <span className="font-medium">{formatChordNameForDisplay(chordName)}</span>
                         {chordObj.position > 1 && (
                           <span className={`inline-flex items-center justify-center rounded-full text-white text-xs font-medium leading-[1em] min-w-[1em] px-1 ${
                             isSelected ? 'bg-primary-700' : 'bg-gray-900'
@@ -189,7 +190,7 @@ export default function ChordAutocompleteDropdown({
                         </div>
                       )}
                       <div className="flex-1 flex items-center gap-2 min-w-0">
-                        <span className="font-medium">{chordName}</span>
+                        <span className="font-medium">{formatChordNameForDisplay(chordName)}</span>
                         {chordObj.position > 1 && (
                           <span className={`inline-flex items-center justify-center rounded-full text-white text-xs font-medium leading-[1em] min-w-[1em] px-1 ${
                             isSelected ? 'bg-primary-700' : 'bg-gray-900'

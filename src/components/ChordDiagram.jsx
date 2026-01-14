@@ -1,3 +1,5 @@
+import { formatChordNameForDisplay } from '../utils/chord-formatting';
+
 /**
  * Get string labels for an instrument and tuning
  * @param {string} instrument - Instrument type (e.g., 'ukulele')
@@ -156,7 +158,7 @@ export default function ChordDiagram({
       {chordName && (
         <div className="flex justify-center mb-0.5 w-full">
           <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium">
-            <span>{chordName}</span>
+            <span>{formatChordNameForDisplay(chordName)}</span>
             {position > 1 && (
               <span className="inline-flex items-center justify-center rounded-full bg-primary-700 text-white text-xs font-medium leading-[1em] min-w-[1em] px-1">
                 {position}

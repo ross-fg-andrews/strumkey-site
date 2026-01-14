@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import ChordDiagram from './ChordDiagram';
+import { formatChordNameForDisplay } from '../utils/chord-formatting';
 
 /**
  * Normalize query to convert "sharp"/"flat" text patterns to #/b notation
@@ -232,7 +233,7 @@ export default function ChordVariationsModal({
                           </div>
                         )}
                         <div className="flex-1 flex items-center gap-2 min-w-0">
-                          <span className="font-medium">{chordName}</span>
+                          <span className="font-medium">{formatChordNameForDisplay(chordName)}</span>
                           {chordObj.position > 1 && (
                             <span className="inline-flex items-center justify-center rounded-full bg-gray-900 text-white text-xs font-medium leading-[1em] min-w-[1em] px-1">
                               {chordObj.position}
@@ -282,7 +283,7 @@ export default function ChordVariationsModal({
                           </div>
                         )}
                         <div className="flex-1 flex items-center gap-2 min-w-0">
-                          <span className="font-medium">{chordName}</span>
+                          <span className="font-medium">{formatChordNameForDisplay(chordName)}</span>
                           {chordObj.position > 1 && (
                             <span className="inline-flex items-center justify-center rounded-full bg-gray-900 text-white text-xs font-medium leading-[1em] min-w-[1em] px-1">
                               {chordObj.position}
