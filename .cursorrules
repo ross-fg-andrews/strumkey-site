@@ -1,0 +1,50 @@
+# Cursor AI Rules for Strumkey Project
+
+## Git Branch Workflow
+
+**CRITICAL: Always work on the `develop` branch for all development work.**
+
+- Default development branch: `develop`
+- Production branch: `main` (only merge to this, never commit directly)
+- When starting work, always check: `git branch --show-current` - should show `develop`
+- If on `main`, immediately switch: `git checkout develop`
+
+## Development Workflow
+
+1. **Always work on `develop` branch:**
+   - Make all code changes on `develop`
+   - Test locally on `develop`
+   - Commit changes manually with meaningful commit messages
+
+2. **Deploy to staging:**
+   - Use command: `/deploy-to-staging` or `npm run deploy:staging`
+   - Pushes `develop` branch → triggers Vercel staging deployment
+   - Assumes changes are already committed
+
+3. **Deploy to production (only after staging testing):**
+   - Use command: `/deploy-to-production` or `npm run deploy:production`
+   - Merges `develop` into `main` → triggers Vercel production deployment
+
+## Available Commands
+
+- `/check-branch` - Check current Git branch
+- `/switch-to-develop` - Switch to develop branch
+- `/deploy-to-staging` - Push to staging (assumes changes already committed)
+- `/deploy-to-production` - Deploy to production (merges develop → main)
+
+## Database Environments
+
+- Local development uses staging database by default (see `.env`)
+- Staging deployments use staging database
+- Production deployments use production database
+- Never commit `.env` file changes
+
+## Code Guidelines
+
+- Always test changes locally before committing
+- Commit changes manually with clear, descriptive messages
+- Before deploying to staging, ensure all changes are committed
+- Before suggesting production deployment, ensure:
+  - Changes have been tested on staging
+  - User has verified staging deployment works correctly
+  - All changes are committed to `develop`
