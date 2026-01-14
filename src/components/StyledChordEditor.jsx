@@ -1099,7 +1099,7 @@ export default function StyledChordEditor({
         <div
           ref={dropdownRef}
           style={getDropdownStyle()}
-          className="bg-white border border-gray-300 rounded-lg shadow-lg max-h-64 overflow-y-auto flex flex-col min-w-[280px]"
+          className="bg-white border border-gray-300 rounded-lg shadow-lg max-h-[450px] overflow-y-auto flex flex-col min-w-[280px]"
           onMouseDown={(e) => e.stopPropagation()}
         >
           <div className="flex-1 overflow-y-auto">
@@ -1135,7 +1135,7 @@ export default function StyledChordEditor({
                             // Use insertPositionRef.current directly, just like chords do
                             insertElement(element.type);
                           }}
-                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
+                          className={`w-full text-left px-3 py-1 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
                             isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
                           }`}
                         >
@@ -1171,12 +1171,12 @@ export default function StyledChordEditor({
                             e.stopPropagation();
                             handleChordClick(chordName, chordObj.position);
                           }}
-                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
+                          className={`w-full text-left px-3 py-1 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
                             isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
                           }`}
                         >
                           {chordFrets && (
-                            <div className="flex-shrink-0">
+                            <div className="flex-shrink-0 flex items-center">
                               <ChordDiagram
                                 frets={chordFrets}
                                 baseFret={chordObj.baseFret}
@@ -1233,12 +1233,12 @@ export default function StyledChordEditor({
                             console.log('[StyledChordEditor] Clicked chord button (library):', { chordName, chordObj, position: chordObj.position });
                             handleChordClick(chordName, chordObj.position);
                           }}
-                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
+                          className={`w-full text-left px-3 py-1 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
                             isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
                           }`}
                         >
                           {chordFrets && (
-                            <div className="flex-shrink-0">
+                            <div className="flex-shrink-0 flex items-center">
                               <ChordDiagram
                                 frets={chordFrets}
                                 baseFret={chordObj.baseFret}

@@ -705,7 +705,7 @@ export default function ChordAutocomplete({
     }
     
     // Check if dropdown would overflow viewport
-    const dropdownHeight = 256; // max-h-64 = 256px
+    const dropdownHeight = 450; // max-h-[450px] = 450px
     const dropdownWidth = 280; // min-w-[280px] to accommodate chord diagrams
     const viewportHeight = window.innerHeight;
     const viewportWidth = window.innerWidth;
@@ -761,7 +761,7 @@ export default function ChordAutocomplete({
       const absoluteTop = position.top;
       const absoluteLeft = position.left;
       
-      const dropdownHeight = 256;
+      const dropdownHeight = 450;
       const dropdownWidth = 280;
       const viewportHeight = window.innerHeight;
       const viewportWidth = window.innerWidth;
@@ -860,7 +860,7 @@ export default function ChordAutocomplete({
         <div
           ref={dropdownRef}
           style={getDropdownStyle()}
-          className="bg-white border border-gray-300 rounded-lg shadow-lg max-h-64 overflow-y-auto flex flex-col min-w-[280px]"
+          className="bg-white border border-gray-300 rounded-lg shadow-lg max-h-[450px] overflow-y-auto flex flex-col min-w-[280px]"
           onMouseDown={(e) => e.stopPropagation()}
         >
           <div className="flex-1 overflow-y-auto">
@@ -896,7 +896,7 @@ export default function ChordAutocomplete({
                             // Use insertPositionRef.current directly, just like chords do
                             insertElement(element.type);
                           }}
-                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
+                          className={`w-full text-left px-3 py-1 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
                             isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
                           }`}
                         >
@@ -928,12 +928,12 @@ export default function ChordAutocomplete({
                           type="button"
                           data-selected={isSelected}
                           onClick={() => handleChordClick(chordName, chordObj.position)}
-                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
+                          className={`w-full text-left px-3 py-1 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
                             isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
                           }`}
                         >
                           {chordFrets && (
-                            <div className="flex-shrink-0">
+                            <div className="flex-shrink-0 flex items-center">
                               <ChordDiagram
                                 frets={chordFrets}
                                 baseFret={chordObj.baseFret}
@@ -985,12 +985,12 @@ export default function ChordAutocomplete({
                           type="button"
                           data-selected={isSelected}
                           onClick={() => handleChordClick(chordName, chordObj.position)}
-                          className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
+                          className={`w-full text-left px-3 py-1 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
                             isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
                           }`}
                         >
                           {chordFrets && (
-                            <div className="flex-shrink-0">
+                            <div className="flex-shrink-0 flex items-center">
                               <ChordDiagram
                                 frets={chordFrets}
                                 baseFret={chordObj.baseFret}
