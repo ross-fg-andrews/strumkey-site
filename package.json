@@ -16,7 +16,9 @@
     "watch-sync": "node scripts/watch-sync.js",
     "clear-groups": "npx tsx scripts/clear-groups.ts",
     "clean:cache": "rm -rf node_modules/.vite .vite",
-    "clean:all": "npm run clean:cache && rm -rf dist node_modules/.cache"
+    "clean:all": "npm run clean:cache && rm -rf dist node_modules/.cache",
+    "deploy:staging": "git push origin develop",
+    "deploy:production": "node scripts/deploy-production.js"
   },
   "dependencies": {
     "@instantdb/admin": "^0.22.96",
