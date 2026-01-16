@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { createSongbook, updateSongbook, addSongToSongbook, removeSongFromSongbook, updateSongbookSongOrder } from '../db/mutations';
 import { useAccessibleSongs, useSongbook, useMySongbooks } from '../db/queries';
 import { getChordNames, searchChordNames } from '../utils/chord-library';
+import { formatChordNameForDisplay } from '../utils/chord-formatting';
 import { db } from '../db/schema';
 
 // Helper function to extract unique chords from song chords data
@@ -34,7 +35,7 @@ function ChordLabels({ chords }) {
           key={index}
           className="inline-block px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium"
         >
-          {chord}
+          {formatChordNameForDisplay(chord)}
         </span>
       ))}
       {remainingCount > 0 && (

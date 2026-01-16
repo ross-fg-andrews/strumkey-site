@@ -2,6 +2,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { getChordNames, searchChordNames } from '../utils/chord-library';
+import { formatChordNameForDisplay } from '../utils/chord-formatting';
 import {
   useGroup,
   useGroupSongs,
@@ -56,7 +57,7 @@ function ChordLabels({ chords }) {
           key={index}
           className="inline-block px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium"
         >
-          {chord}
+          {formatChordNameForDisplay(chord)}
         </span>
       ))}
       {remainingCount > 0 && (
