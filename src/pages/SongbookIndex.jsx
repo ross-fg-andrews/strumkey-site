@@ -195,7 +195,7 @@ export default function SongbookIndex() {
 
   // Handle edit song
   const handleEdit = (songId) => {
-    navigate(`/songs/${songId}/edit`);
+    navigate(`/songs/${songId}`);
     setOpenMenuId(null);
   };
 
