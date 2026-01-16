@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useMySongs } from '../db/queries';
+import { formatChordNameForDisplay } from '../utils/chord-formatting';
 
 // Helper function to extract unique chords from song chords data
 function getUniqueChords(song) {
@@ -30,7 +31,7 @@ function ChordLabels({ chords }) {
           key={index}
           className="inline-block px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium"
         >
-          {chord}
+          {formatChordNameForDisplay(chord)}
         </span>
       ))}
       {remainingCount > 0 && (
