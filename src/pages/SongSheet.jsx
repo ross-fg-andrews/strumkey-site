@@ -30,10 +30,9 @@ export default function SongSheet() {
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const menuRef = useRef(null);
   const songSelectorRef = useRef(null);
-  // Track the original referrer when song is first opened in view mode
-  const originalReferrerRef = useRef(null);
   
   // Instrument and tuning settings (can be made configurable later)
   const instrument = 'ukulele';
@@ -116,71 +115,9 @@ export default function SongSheet() {
 
   // Compute mode after hooks (this is just derived state, not affecting hook order)
   const isCreateMode = location.pathname === '/songs/new';
-  const isEditMode = !isCreateMode && location.pathname.includes('/edit');
-  const isViewMode = !isEditMode && !isCreateMode && id;
+  const isViewMode = !isCreateMode && id && !isEditing;
   
   const inSongbooks = isViewMode && songbookData?.songbookSongs?.length > 0;
-
-  // Track original referrer when entering view mode for the first time
-  // Use sessionStorage to persist across navigation
-  useEffect(() => {
-    if (isViewMode && id) {
-      const storageKey = `song_referrer_${id}`;
-      
-      // If we have a referrer in location.state, prioritize it and store it
-      if (location.state?.referrer) {
-        originalReferrerRef.current = location.state.referrer;
-        sessionStorage.setItem(storageKey, location.state.referrer);
-        console.log('[SongSheet] Stored referrer from location.state:', location.state.referrer);
-        return;
-      }
-      
-      // Check sessionStorage (might already be set from previous visit)
-      const storedReferrer = sessionStorage.getItem(storageKey);
-      if (storedReferrer) {
-        originalReferrerRef.current = storedReferrer;
-        console.log('[SongSheet] Using stored referrer from sessionStorage:', storedReferrer);
-        return;
-      }
-      
-      // Otherwise, infer from query params or use default
-      let referrer = '/songs';
-      if (groupId) {
-        referrer = `/groups/${groupId}?tab=songs`;
-      } else if (songbookId) {
-        referrer = `/songbooks/${songbookId}`;
-      } else {
-        // Try to detect from document.referrer
-        const docReferrer = document.referrer;
-        if (docReferrer) {
-          try {
-            const referrerUrl = new URL(docReferrer);
-            const referrerPath = referrerUrl.pathname;
-            // If coming from /songs, /songbooks, or /groups, use that
-            if (referrerPath.startsWith('/songs') && !referrerPath.includes('/songs/')) {
-              referrer = '/songs';
-            } else if (referrerPath.startsWith('/songbooks/')) {
-              const match = referrerPath.match(/\/songbooks\/([^\/]+)/);
-              if (match) {
-                referrer = `/songbooks/${match[1]}`;
-              }
-            } else if (referrerPath.startsWith('/groups/')) {
-              const match = referrerPath.match(/\/groups\/([^\/]+)/);
-              if (match) {
-                referrer = `/groups/${match[1]}?tab=songs`;
-              }
-            }
-          } catch (e) {
-            // Invalid URL, use default
-          }
-        }
-      }
-      
-      originalReferrerRef.current = referrer;
-      sessionStorage.setItem(storageKey, referrer);
-      console.log('[SongSheet] Inferred and stored referrer:', referrer);
-    }
-  }, [isViewMode, id, location.state, groupId, songbookId]);
 
   // Check if user has editing rights (user created the song)
   const canEdit = user && song && song.createdBy === user.id;
@@ -188,7 +125,7 @@ export default function SongSheet() {
 
   // Initialize edit mode with song data
   useEffect(() => {
-    if (isEditMode && song) {
+    if (isEditing && song) {
       setTitle(song.title || '');
       setArtist(song.artist || '');
       
@@ -211,7 +148,7 @@ export default function SongSheet() {
       setArtist('');
       setLyricsText('');
     }
-  }, [isEditMode, isCreateMode, song]);
+  }, [isEditing, isCreateMode, song]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -592,55 +529,15 @@ export default function SongSheet() {
       const { lyrics, chords } = parseLyricsWithChords(lyricsText);
       const chordsJson = chords && chords.length > 0 ? JSON.stringify(chords) : '[]';
 
-      if (isEditMode) {
+      if (isEditing && id) {
         await updateSong(id, {
           title,
           lyrics,
           artist,
           chords: chordsJson,
         });
-        // Preserve query parameters when navigating back to view mode
-        // Also preserve the referrer from location.state or our ref
-        const params = new URLSearchParams();
-        if (songbookId) params.set('songbook', songbookId);
-        if (groupId) params.set('group', groupId);
-        const queryString = params.toString();
-        
-        // Get the referrer - check sessionStorage first (most reliable)
-        let referrer = null;
-        if (id) {
-          const storageKey = `song_referrer_${id}`;
-          referrer = sessionStorage.getItem(storageKey);
-        }
-        
-        // If not in sessionStorage, check location.state or ref
-        if (!referrer) {
-          referrer = location.state?.referrer || originalReferrerRef.current;
-        }
-        
-        // If still not found, infer from query params or use default
-        if (!referrer) {
-          if (groupId) {
-            referrer = `/groups/${groupId}?tab=songs`;
-          } else if (songbookId) {
-            referrer = `/songbooks/${songbookId}`;
-          } else {
-            referrer = '/songs';
-          }
-        }
-        
-        console.log('[SongSheet] handleSave - referrer:', referrer, 'location.state:', location.state, 'originalReferrerRef:', originalReferrerRef.current, 'sessionStorage before:', id ? sessionStorage.getItem(`song_referrer_${id}`) : 'no id');
-        
-        // ALWAYS store in sessionStorage BEFORE navigating (ensures it's available when Back is clicked)
-        if (id && referrer) {
-          sessionStorage.setItem(`song_referrer_${id}`, referrer);
-          console.log('[SongSheet] handleSave - stored referrer in sessionStorage:', referrer);
-        }
-        
-        navigate(`/songs/${id}${queryString ? `?${queryString}` : ''}`, {
-          state: { referrer },
-          replace: true, // Replace edit mode in history so back button doesn't go back to edit
-        });
+        // Exit edit mode after successful save
+        setIsEditing(false);
       } else {
         const newSongId = await createSong({
           title,
@@ -669,42 +566,30 @@ export default function SongSheet() {
     }
   };
 
-  const handleCancel = () => {
-    if (isEditMode) {
-      // Preserve query parameters when canceling edit
-      // Also preserve the referrer from location.state
-      const params = new URLSearchParams();
-      if (songbookId) params.set('songbook', songbookId);
-      if (groupId) params.set('group', groupId);
-      const queryString = params.toString();
+  const handleCancelEdit = () => {
+    // Reset form fields to original song values
+    if (song) {
+      setTitle(song.title || '');
+      setArtist(song.artist || '');
       
-      // Get the referrer from location.state, ref, or sessionStorage
-      // If not present, infer it from query params or use default
-      let referrer = location.state?.referrer || originalReferrerRef.current;
-      if (!referrer && id) {
-        const storageKey = `song_referrer_${id}`;
-        referrer = sessionStorage.getItem(storageKey);
-      }
-      if (!referrer) {
-        if (groupId) {
-          referrer = `/groups/${groupId}?tab=songs`;
-        } else if (songbookId) {
-          referrer = `/songbooks/${songbookId}`;
-        } else {
-          referrer = '/songs';
+      let chords = [];
+      if (song.chords) {
+        try {
+          chords = JSON.parse(song.chords);
+        } catch (e) {
+          console.error('Error parsing chords:', e);
+          chords = [];
         }
       }
       
-      // Store in sessionStorage for persistence
-      if (id) {
-        sessionStorage.setItem(`song_referrer_${id}`, referrer);
-      }
-      
-      navigate(`/songs/${id}${queryString ? `?${queryString}` : ''}`, {
-        state: { referrer },
-        replace: true, // Replace edit mode in history so back button doesn't go back to edit
-      });
-    } else {
+      const lyricsText = lyricsWithChordsToText(song.lyrics || '', chords);
+      setLyricsText(lyricsText);
+    }
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    if (isCreateMode) {
       navigate('/home');
     }
   };
@@ -731,18 +616,7 @@ export default function SongSheet() {
   };
 
 
-  // Show loading state when editing/viewing and song is not yet loaded
-  // This handles the case where we navigate to a newly created song before InstantDB syncs
-  if ((isEditMode || isViewMode) && !song && !error && !isCreateMode) {
-    return (
-      <div>
-        <p>Loading song...</p>
-      </div>
-    );
-  }
-  
-  // Also handle the case where we're in view mode but song data isn't ready yet
-  // This can happen when navigating immediately after creating a song
+  // Show loading state when viewing and song is not yet loaded
   if (isViewMode && id && !song && !error) {
     return (
       <div>
@@ -759,46 +633,8 @@ export default function SongSheet() {
     );
   }
 
-  // Edit/Create Mode
-  if (isEditMode || isCreateMode) {
-    const handleBackEdit = () => {
-      if (isEditMode && id) {
-        // If editing, go back to the song view (preserve context)
-        // Store the referrer from before edit mode in location.state
-        const params = new URLSearchParams();
-        if (songbookId) params.set('songbook', songbookId);
-        if (groupId) params.set('group', groupId);
-        const queryString = params.toString();
-        
-        // Get the referrer from location.state (where user was before opening the song)
-        // If not present, infer it from query params or use default
-        let referrer = location.state?.referrer;
-        if (!referrer) {
-          if (groupId) {
-            referrer = `/groups/${groupId}?tab=songs`;
-          } else if (songbookId) {
-            referrer = `/songbooks/${songbookId}`;
-          } else {
-            referrer = '/songs';
-          }
-        }
-        
-        navigate(`/songs/${id}${queryString ? `?${queryString}` : ''}`, {
-          state: { referrer },
-          replace: true, // Replace edit mode in history so back button doesn't go back to edit
-        });
-      } else {
-        // If creating, check for group context first
-        if (groupId) {
-          navigate(`/groups/${groupId}?tab=songs`);
-        } else if (window.history.length > 1) {
-          navigate(-1);
-        } else {
-          navigate('/songs');
-        }
-      }
-    };
-
+  // Create Mode
+  if (isCreateMode) {
     const handleImport = (importedData) => {
       // Pre-fill form fields with imported data
       if (importedData.title) {
@@ -817,7 +653,15 @@ export default function SongSheet() {
         {/* Back button */}
         <div className="flex items-center gap-4 mb-4">
           <button
-            onClick={handleBackEdit}
+            onClick={() => {
+              if (groupId) {
+                navigate(`/groups/${groupId}?tab=songs`);
+              } else if (window.history.length > 1) {
+                navigate(-1);
+              } else {
+                navigate('/songs');
+              }
+            }}
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
             aria-label="Go back"
           >
@@ -847,16 +691,14 @@ export default function SongSheet() {
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
-          {isCreateMode && (
-            <button
-              type="button"
-              onClick={() => setShowImportModal(true)}
-              disabled={saving}
-              className="btn btn-secondary"
-            >
-              Import
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setShowImportModal(true)}
+            disabled={saving}
+            className="btn btn-secondary"
+          >
+            Import
+          </button>
           <button
             onClick={handleCancel}
             disabled={saving}
@@ -879,7 +721,7 @@ export default function SongSheet() {
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder={isCreateMode ? "Song Title" : ""}
+            placeholder="Song Title"
             className="text-4xl font-bold mb-2 w-full bg-transparent border-b-2 border-transparent focus:border-gray-300 outline-none p-0 transition-colors placeholder:text-gray-400"
           />
           
@@ -888,7 +730,7 @@ export default function SongSheet() {
             type="text"
             value={artist}
             onChange={(e) => setArtist(e.target.value)}
-            placeholder={isCreateMode ? "Artist Name" : ""}
+            placeholder="Artist Name"
             className="text-xl text-gray-600 w-full bg-transparent border-b-2 border-transparent focus:border-gray-300 outline-none p-0 transition-colors placeholder:text-gray-500"
           />
         </div>
@@ -898,7 +740,7 @@ export default function SongSheet() {
           <StyledChordEditor
             value={lyricsText}
             onChange={(e) => setLyricsText(e.target.value)}
-            placeholder={isCreateMode ? "Paste your lyrics here.\n\nPress / to add chords inline with your lyrics.\n\nExample:\nAmazing [C]grace how [G]sweet the [Am]sound\nThat saved a [F]wretch like [C]me" : ""}
+            placeholder="Paste your lyrics here.\n\nPress / to add chords inline with your lyrics.\n\nExample:\nAmazing [C]grace how [G]sweet the [Am]sound\nThat saved a [F]wretch like [C]me"
             rows={30}
             className="w-full p-0 border-none outline-none focus:outline-none bg-transparent text-base leading-relaxed resize-none placeholder:text-gray-400"
             instrument={instrument}
@@ -911,6 +753,7 @@ export default function SongSheet() {
   }
 
   // View Mode (existing behavior)
+  // We always need song to exist, whether viewing or editing
   if (!song) {
     return (
       <div>
@@ -919,48 +762,17 @@ export default function SongSheet() {
     );
   }
   
-  const renderedLyrics = chordMode === 'inline'
-    ? renderInlineChords(song.lyrics, chords)
-    : renderAboveChords(song.lyrics, chords);
+  // Only calculate rendered lyrics if we're not editing
+  const renderedLyrics = !isEditing
+    ? (chordMode === 'inline'
+        ? renderInlineChords(song.lyrics, chords)
+        : renderAboveChords(song.lyrics, chords))
+    : [];
   
-  // Parse elements for styling
-  const { headings, instructions } = extractElements(song.lyrics);
+  // Parse elements for styling (only if we're not editing)
+  const { headings, instructions } = !isEditing && song.lyrics ? extractElements(song.lyrics) : { headings: [], instructions: [] };
 
   const handleBack = () => {
-    // Priority 1: Check sessionStorage first (most reliable, persists across navigation)
-    let referrer = null;
-    if (id) {
-      const storageKey = `song_referrer_${id}`;
-      referrer = sessionStorage.getItem(storageKey);
-    }
-    
-    // Priority 2: Check location.state (set when navigating from edit mode)
-    if (!referrer && location.state?.referrer) {
-      referrer = location.state.referrer;
-    }
-    
-    // Priority 3: Check our ref (original referrer when song was first opened)
-    if (!referrer && originalReferrerRef.current) {
-      referrer = originalReferrerRef.current;
-    }
-    
-    // Safety check: never navigate to edit mode
-    if (referrer && referrer.includes('/edit')) {
-      console.warn('[SongSheet] handleBack - referrer points to edit mode, using fallback');
-      referrer = null;
-    }
-    
-    console.log('[SongSheet] handleBack - referrer:', referrer, 'location.state:', location.state, 'originalReferrerRef:', originalReferrerRef.current, 'sessionStorage:', id ? sessionStorage.getItem(`song_referrer_${id}`) : 'no id');
-    
-    if (referrer) {
-      // Clean up sessionStorage when navigating away
-      if (id) {
-        sessionStorage.removeItem(`song_referrer_${id}`);
-      }
-      navigate(referrer);
-      return;
-    }
-    
     // If we're in a group context, go back to the group songs tab
     if (groupId) {
       navigate(`/groups/${groupId}?tab=songs`);
@@ -977,8 +789,37 @@ export default function SongSheet() {
 
   return (
     <div>
+      {/* Edit Banner */}
+      {isEditing && (
+        <div className="fixed top-0 left-0 right-0 bg-primary-50 border-b border-primary-200 z-40 shadow-sm">
+          <div className="w-full px-4 xl:container xl:mx-auto xl:pl-16">
+            <div className="flex items-center justify-between py-3">
+              <p className="text-sm font-medium text-primary-900">
+                You are editing this song
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="btn btn-primary text-sm"
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  disabled={saving}
+                  className="btn btn-secondary text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
+      {showDeleteModal && song && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <h2 className="text-xl font-bold mb-4">Delete Song</h2>
@@ -1031,69 +872,90 @@ export default function SongSheet() {
         </div>
         <div className="flex items-start justify-between mb-2">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              {isViewMode && songbookNavigation ? (
-                <div className="relative" ref={songSelectorRef}>
-                  <button
-                    onClick={() => setSongSelectorOpen(!songSelectorOpen)}
-                    className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
-                    aria-label="Select song from songbook"
-                  >
-                    <h1 className="text-4xl font-bold">{song.title}</h1>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className={`h-5 w-5 text-gray-600 transition-transform ${songSelectorOpen ? 'rotate-180' : ''}`}
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 9l-7 7-7-7"
-                      />
-                    </svg>
-                  </button>
-                  {songSelectorOpen && (
-                    <div className="absolute left-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-10 max-h-96 overflow-y-auto">
-                      <div className="py-1">
-                        {songbookNavigation.songs.map((songItem) => (
-                          <button
-                            key={songItem.id}
-                            onClick={() => handleJumpToSong(songItem.id)}
-                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors ${
-                              songItem.id === id ? 'bg-primary-50 text-primary-700 font-medium' : ''
-                            }`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="text-gray-500 font-mono text-xs w-6">
-                                {songItem.position}.
-                              </span>
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium truncate">{songItem.title}</div>
-                                {songItem.artist && (
-                                  <div className="text-xs text-gray-500 truncate">{songItem.artist}</div>
-                                )}
-                              </div>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
+            {isEditing ? (
+              <>
+                <div className="mb-6">
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="text-4xl font-bold mb-2 w-full bg-transparent border-b-2 border-transparent focus:border-gray-300 outline-none p-0 transition-colors"
+                  />
+                  <input
+                    type="text"
+                    value={artist}
+                    onChange={(e) => setArtist(e.target.value)}
+                    className="text-xl text-gray-600 w-full bg-transparent border-b-2 border-transparent focus:border-gray-300 outline-none p-0 transition-colors"
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-2">
+                  {isViewMode && songbookNavigation ? (
+                    <div className="relative" ref={songSelectorRef}>
+                      <button
+                        onClick={() => setSongSelectorOpen(!songSelectorOpen)}
+                        className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
+                        aria-label="Select song from songbook"
+                      >
+                        <h1 className="text-4xl font-bold">{song.title}</h1>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className={`h-5 w-5 text-gray-600 transition-transform ${songSelectorOpen ? 'rotate-180' : ''}`}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </button>
+                      {songSelectorOpen && (
+                        <div className="absolute left-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-10 max-h-96 overflow-y-auto">
+                          <div className="py-1">
+                            {songbookNavigation.songs.map((songItem) => (
+                              <button
+                                key={songItem.id}
+                                onClick={() => handleJumpToSong(songItem.id)}
+                                className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors ${
+                                  songItem.id === id ? 'bg-primary-50 text-primary-700 font-medium' : ''
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="text-gray-500 font-mono text-xs w-6">
+                                    {songItem.position}.
+                                  </span>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium truncate">{songItem.title}</div>
+                                    {songItem.artist && (
+                                      <div className="text-xs text-gray-500 truncate">{songItem.artist}</div>
+                                    )}
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
+                  ) : (
+                    <h1 className="text-4xl font-bold">{song.title}</h1>
                   )}
                 </div>
-              ) : (
-                <h1 className="text-4xl font-bold">{song.title}</h1>
-              )}
-            </div>
-            {song.artist && (
-              <p className="text-xl text-gray-600">{song.artist}</p>
+                {song.artist && (
+                  <p className="text-xl text-gray-600">{song.artist}</p>
+                )}
+              </>
             )}
           </div>
           <div className="flex items-center gap-2">
             {/* Previous/Next Navigation Buttons */}
-            {isViewMode && songbookNavigation && (
+            {!isEditing && isViewMode && songbookNavigation && (
               <div className="flex items-center gap-1">
                 <div className="relative group">
                   <button
@@ -1149,12 +1011,13 @@ export default function SongSheet() {
                 </div>
               </div>
             )}
-            <div className="relative" ref={menuRef}>
-              <button
-                onClick={() => setMenuOpen(!menuOpen)}
-                className="btn p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                aria-label="Song actions"
-              >
+            {!isEditing && (
+              <div className="relative" ref={menuRef}>
+                <button
+                  onClick={() => setMenuOpen(!menuOpen)}
+                  className="btn p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  aria-label="Song actions"
+                >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 className="h-6 w-6"
@@ -1215,48 +1078,7 @@ export default function SongSheet() {
                       <div className="border-t border-gray-200 my-1"></div>
                       <button
                         onClick={() => {
-                          // Preserve query parameters when navigating to edit mode
-                          // Also store the referrer so we can go back to the original page
-                          const params = new URLSearchParams();
-                          if (songbookId) params.set('songbook', songbookId);
-                          if (groupId) params.set('group', groupId);
-                          const queryString = params.toString();
-                          
-                          // Determine the referrer: where should we go back to?
-                          // Check sessionStorage first (most reliable)
-                          let referrer = null;
-                          if (id) {
-                            const storageKey = `song_referrer_${id}`;
-                            referrer = sessionStorage.getItem(storageKey);
-                          }
-                          
-                          // If not in sessionStorage, check location.state or ref
-                          if (!referrer) {
-                            referrer = location.state?.referrer || originalReferrerRef.current;
-                          }
-                          
-                          // If still not found, infer from query params
-                          if (!referrer) {
-                            if (groupId) {
-                              referrer = `/groups/${groupId}?tab=songs`;
-                            } else if (songbookId) {
-                              referrer = `/songbooks/${songbookId}`;
-                            } else {
-                              // No context, so go back to songs list
-                              referrer = '/songs';
-                            }
-                          }
-                          
-                          // Always store in sessionStorage for persistence
-                          if (id && referrer) {
-                            sessionStorage.setItem(`song_referrer_${id}`, referrer);
-                          }
-                          
-                          console.log('[SongSheet] Edit button - referrer:', referrer, 'location.state:', location.state, 'originalReferrerRef:', originalReferrerRef.current);
-                          
-                          navigate(`/songs/${id}/edit${queryString ? `?${queryString}` : ''}`, {
-                            state: { referrer },
-                          });
+                          setIsEditing(true);
                           setMenuOpen(false);
                         }}
                         className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
@@ -1283,6 +1105,7 @@ export default function SongSheet() {
               </div>
             )}
           </div>
+            )}
           </div>
         </div>
       </div>
@@ -1290,7 +1113,17 @@ export default function SongSheet() {
       <div ref={containerRef} className="flex flex-col md:flex-row md:gap-6">
         {/* Lyrics Section */}
         <div className="flex-1 order-2 md:order-1">
-          {chordMode === 'inline' ? (
+          {isEditing ? (
+            <StyledChordEditor
+              value={lyricsText}
+              onChange={(e) => setLyricsText(e.target.value)}
+              rows={30}
+              className="w-full p-0 border-none outline-none focus:outline-none bg-transparent text-base leading-relaxed resize-none"
+              instrument={instrument}
+              tuning={tuning}
+              userId={user?.id}
+            />
+          ) : chordMode === 'inline' ? (
             <div className="space-y-2 font-mono">
               {renderedLyrics.map((line, i) => {
                 // Check if this line is a heading
@@ -1401,7 +1234,7 @@ export default function SongSheet() {
         </div>
 
         {/* Chord Charts Section */}
-        {chordDiagrams.length > 0 ? (
+        {!isEditing && chordDiagrams.length > 0 ? (
           <div 
             className="mb-6 md:mb-0 md:flex-shrink-0 order-1 md:order-2"
             style={optimalChordWidth !== null ? { width: `${optimalChordWidth}px` } : undefined}
@@ -1435,7 +1268,7 @@ export default function SongSheet() {
               ))}
             </div>
           </div>
-        ) : uniqueChordPairs.length > 0 ? (
+        ) : !isEditing && uniqueChordPairs.length > 0 ? (
           // Show message if chords exist but don't match
           <div 
             className="mb-6 md:mb-0 md:flex-shrink-0 order-1 md:order-2"

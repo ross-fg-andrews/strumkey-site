@@ -117,7 +117,6 @@ function App() {
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/songs" element={<SongsIndex />} />
             <Route path="/songs/new" element={<SongSheet />} />
-            <Route path="/songs/:id/edit" element={<SongSheet />} />
             <Route path="/songs/:id" element={<SongSheet />} />
             <Route path="/songbooks" element={<SongbooksIndex />} />
             <Route path="/songbooks/new" element={<SongbookEditor />} />
