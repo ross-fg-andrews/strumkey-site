@@ -2,6 +2,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useMySongs, useMyGroups } from '../db/queries';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
+import { MicrophoneStageIcon } from '../utils/icons';
 
 // Helper function to extract unique chords from song chords data
 function getUniqueChords(song) {
@@ -102,13 +103,22 @@ export default function HomePage() {
                       onClick={() => navigate(`/songs/${song.id}`)}
                       className="cursor-pointer focus:bg-gray-50"
                     >
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-gray-900 font-medium">
-                          {song.title}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-600">
-                        {song.artist || <span className="text-gray-400">—</span>}
+                      <td className="px-6 py-4 align-middle">
+                        <div className="flex flex-col">
+                          <span className="font-['Alice',_serif] text-[20px] text-gray-900 leading-tight">
+                            {song.title}
+                          </span>
+                          {song.artist ? (
+                            <div className="flex items-center gap-0.5 mt-0">
+                              <MicrophoneStageIcon size={14} className="text-gray-500" />
+                              <span className="text-[14px] text-gray-500 leading-tight">
+                                {song.artist}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-[14px] text-gray-400 mt-0 leading-tight">—</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <ChordLabels chords={uniqueChords} />

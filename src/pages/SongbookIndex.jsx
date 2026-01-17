@@ -5,6 +5,7 @@ import { db } from '../db/schema';
 import { useEffect, useState, useRef } from 'react';
 import { copySong, removeSongFromSongbook, shareSongsWithGroups } from '../db/mutations';
 import { createPortal } from 'react-dom';
+import { MicrophoneStageIcon } from '../utils/icons';
 
 export default function SongbookIndex() {
   const { id } = useParams();
@@ -350,16 +351,25 @@ export default function SongbookIndex() {
                       onClick={() => navigate(`/songs/${song.id}?songbook=${id}`)}
                       className="cursor-pointer focus:bg-gray-50"
                     >
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 align-middle">
                         #{index + 1}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-medium text-gray-900">
-                          {song.title}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {song.artist || <span className="text-gray-400">—</span>}
+                      <td className="px-6 py-4 align-middle">
+                        <div className="flex flex-col">
+                          <span className="font-['Alice',_serif] text-[20px] text-gray-900 leading-tight">
+                            {song.title}
+                          </span>
+                          {song.artist ? (
+                            <div className="flex items-center gap-0.5 mt-0">
+                              <MicrophoneStageIcon size={14} className="text-gray-500" />
+                              <span className="text-[14px] text-gray-500 leading-tight">
+                                {song.artist}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-[14px] text-gray-400 mt-0 leading-tight">—</span>
+                          )}
+                        </div>
                       </td>
                       <td 
                         className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium relative"
