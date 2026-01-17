@@ -20,6 +20,7 @@ import {
   SignOut,
   ShieldCheck,
   MicrophoneStage,
+  DiceFour,
 } from '@phosphor-icons/react';
 
 // Export with app's naming convention for consistency
@@ -34,6 +35,7 @@ export const GearIcon = Gear;
 export const LogOutIcon = SignOut;
 export const AdminIcon = ShieldCheck;
 export const MicrophoneStageIcon = MicrophoneStage;
+export const ChordIcon = DiceFour;
 
 // Re-export commonly used Phosphor icon props/types for convenience
 export { IconContext } from '@phosphor-icons/react';

@@ -17,6 +17,7 @@ import GroupPage from './pages/GroupPage'
 import GroupsIndex from './pages/GroupsIndex'
 import MeetingPage from './pages/MeetingPage'
 import ProfilePage from './pages/ProfilePage'
+import ChordsPage from './pages/ChordsPage'
 
 function App() {
   // Log InstantDB errors for debugging
@@ -118,6 +119,7 @@ function App() {
             <Route path="/songs" element={<SongsIndex />} />
             <Route path="/songs/new" element={<SongSheet />} />
             <Route path="/songs/:id" element={<SongSheet />} />
+            <Route path="/chords" element={<ChordsPage />} />
             <Route path="/songbooks" element={<SongbooksIndex />} />
             <Route path="/songbooks/new" element={<SongbookEditor />} />
             <Route path="/songbooks/:id" element={<SongbookIndex />} />
