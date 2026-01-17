@@ -22,6 +22,7 @@ export default function SongSheet() {
   const { user } = useAuth();
   
   const [chordMode, setChordMode] = useState('inline'); // 'inline' or 'above'
+  const [previousChordMode, setPreviousChordMode] = useState(null); // Store previous mode when entering edit
   const [menuOpen, setMenuOpen] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -169,7 +170,20 @@ export default function SongSheet() {
 
   // Parse chords from JSON string (must be before early returns for hooks)
   // Always ensure chords is an array to maintain consistent hook dependencies
+  // During editing, parse chords from lyricsText in real-time
   const chords = useMemo(() => {
+    // If editing, parse chords from the current lyricsText
+    if (isEditing && lyricsText) {
+      try {
+        const { chords: parsedChords } = parseLyricsWithChords(lyricsText);
+        return Array.isArray(parsedChords) ? parsedChords : [];
+      } catch (e) {
+        console.error('Error parsing chords from lyricsText:', e);
+        return [];
+      }
+    }
+    
+    // Otherwise, use saved chords from song
     if (!song?.chords) {
       return [];
     }
@@ -180,7 +194,7 @@ export default function SongSheet() {
       console.error('Error parsing chords:', e);
       return [];
     }
-  }, [song?.chords]);
+  }, [isEditing, lyricsText, song?.chords]);
   
   // Extract unique chord name-position pairs from the song (must be before early returns)
   const uniqueChordPairs = useMemo(() => {
@@ -538,6 +552,11 @@ export default function SongSheet() {
         });
         // Exit edit mode after successful save
         setIsEditing(false);
+        // Restore previous chord mode if it was stored
+        if (previousChordMode !== null) {
+          setChordMode(previousChordMode);
+          setPreviousChordMode(null);
+        }
       } else {
         const newSongId = await createSong({
           title,
@@ -586,6 +605,11 @@ export default function SongSheet() {
       setLyricsText(lyricsText);
     }
     setIsEditing(false);
+    // Restore previous chord mode if it was stored
+    if (previousChordMode !== null) {
+      setChordMode(previousChordMode);
+      setPreviousChordMode(null);
+    }
   };
 
   const handleCancel = () => {
@@ -1078,6 +1102,12 @@ export default function SongSheet() {
                       <div className="border-t border-gray-200 my-1"></div>
                       <button
                         onClick={() => {
+                          // Store current chord mode before entering edit mode
+                          setPreviousChordMode(chordMode);
+                          // Force inline mode for editing (users can't position chords in "chords above" view)
+                          if (chordMode === 'above') {
+                            setChordMode('inline');
+                          }
                           setIsEditing(true);
                           setMenuOpen(false);
                         }}
@@ -1118,7 +1148,7 @@ export default function SongSheet() {
               value={lyricsText}
               onChange={(e) => setLyricsText(e.target.value)}
               rows={30}
-              className="w-full p-0 border-none outline-none focus:outline-none bg-transparent text-base leading-relaxed resize-none"
+              className="w-full p-0 border-none outline-none focus:outline-none bg-transparent text-base leading-relaxed resize-none font-mono"
               instrument={instrument}
               tuning={tuning}
               userId={user?.id}
@@ -1234,7 +1264,7 @@ export default function SongSheet() {
         </div>
 
         {/* Chord Charts Section */}
-        {!isEditing && chordDiagrams.length > 0 ? (
+        {chordDiagrams.length > 0 ? (
           <div 
             className="mb-6 md:mb-0 md:flex-shrink-0 order-1 md:order-2"
             style={optimalChordWidth !== null ? { width: `${optimalChordWidth}px` } : undefined}
@@ -1268,7 +1298,7 @@ export default function SongSheet() {
               ))}
             </div>
           </div>
-        ) : !isEditing && uniqueChordPairs.length > 0 ? (
+        ) : uniqueChordPairs.length > 0 ? (
           // Show message if chords exist but don't match
           <div 
             className="mb-6 md:mb-0 md:flex-shrink-0 order-1 md:order-2"

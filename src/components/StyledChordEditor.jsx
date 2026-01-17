@@ -127,7 +127,19 @@ export default function StyledChordEditor({
       : chordName.length + 2; // [Name]
   };
 
-  // Get cursor position in contenteditable (accounting for <br> tags and chord spans)
+  // Helper function to get heading/instruction marker length
+  const getElementMarkerLength = (element) => {
+    if (element.hasAttribute('data-heading')) {
+      const headingText = element.getAttribute('data-heading-text') || '';
+      return `{heading:${headingText}}`.length;
+    } else if (element.hasAttribute('data-instruction')) {
+      const instructionText = element.getAttribute('data-instruction-text') || '';
+      return `{instruction:${instructionText}}`.length;
+    }
+    return 0;
+  };
+
+  // Get cursor position in contenteditable (accounting for <br> tags, chord spans, and heading/instruction elements)
   const getCursorPosition = () => {
     const selection = window.getSelection();
     if (selection.rangeCount === 0) return 0;
@@ -152,6 +164,8 @@ export default function StyledChordEditor({
           pos += 1; // Count <br> as one character (newline)
         } else if (child.nodeType === Node.ELEMENT_NODE && child.hasAttribute('data-chord')) {
           pos += getChordMarkerLength(child);
+        } else if (child.nodeType === Node.ELEMENT_NODE && (child.hasAttribute('data-heading') || child.hasAttribute('data-instruction'))) {
+          pos += getElementMarkerLength(child);
         } else if (child.nodeType === Node.ELEMENT_NODE) {
           // For other elements (like divs), count their text content
           pos += child.textContent.length;
@@ -173,6 +187,8 @@ export default function StyledChordEditor({
             allNodes.push({ type: 'br', node: child });
           } else if (child.nodeType === Node.ELEMENT_NODE && child.hasAttribute('data-chord')) {
             allNodes.push({ type: 'chord', node: child });
+          } else if (child.nodeType === Node.ELEMENT_NODE && (child.hasAttribute('data-heading') || child.hasAttribute('data-instruction'))) {
+            allNodes.push({ type: 'element', node: child });
           } else if (child.nodeType === Node.ELEMENT_NODE) {
             collectNodes(child);
           }
@@ -193,7 +209,9 @@ export default function StyledChordEditor({
         } else if (item.type === 'br') {
           pos += 1;
         } else if (item.type === 'chord') {
-          pos += item.node.textContent.length + 2;
+          pos += getChordMarkerLength(item.node);
+        } else if (item.type === 'element') {
+          pos += getElementMarkerLength(item.node);
         }
       }
     }
@@ -252,12 +270,12 @@ export default function StyledChordEditor({
     return pos;
   };
 
-  // Set cursor position in contenteditable (accounting for <br> tags and chord spans)
+  // Set cursor position in contenteditable (accounting for <br> tags, chord spans, and heading/instruction elements)
   const setCursorPosition = (pos) => {
     const selection = window.getSelection();
     const range = document.createRange();
     
-    // Collect all nodes in order: text nodes, <br> elements, and chord spans
+    // Collect all nodes in order: text nodes, <br> elements, chord spans, and heading/instruction elements
     const allNodes = [];
     const collectNodes = (node) => {
       for (let child = node.firstChild; child; child = child.nextSibling) {
@@ -267,6 +285,8 @@ export default function StyledChordEditor({
           allNodes.push({ type: 'br', node: child });
         } else if (child.nodeType === Node.ELEMENT_NODE && child.hasAttribute('data-chord')) {
           allNodes.push({ type: 'chord', node: child });
+        } else if (child.nodeType === Node.ELEMENT_NODE && (child.hasAttribute('data-heading') || child.hasAttribute('data-instruction'))) {
+          allNodes.push({ type: 'element', node: child });
         } else if (child.nodeType === Node.ELEMENT_NODE) {
           collectNodes(child);
         }
@@ -314,6 +334,19 @@ export default function StyledChordEditor({
           return;
         }
         currentPos += chordLength;
+      } else if (item.type === 'element') {
+        // Calculate heading/instruction marker length
+        const elementLength = getElementMarkerLength(item.node);
+        if (currentPos + elementLength >= pos) {
+          // Position is within or right after the element
+          // Place cursor right after the element
+          range.setStartAfter(item.node);
+          range.setEndAfter(item.node);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          return;
+        }
+        currentPos += elementLength;
       }
     }
     
@@ -349,7 +382,33 @@ export default function StyledChordEditor({
         if (child.nodeType === Node.TEXT_NODE) {
           text += child.textContent;
         } else if (child.nodeType === Node.ELEMENT_NODE) {
-          if (child.tagName === 'BR') {
+          if (child.hasAttribute('data-heading')) {
+            // This is a styled heading element
+            const headingText = child.getAttribute('data-heading-text') || child.textContent.trim();
+            text += `{heading:${headingText}}`;
+            // Check if next sibling is a BR and skip it (we'll add newline here)
+            const nextSibling = child.nextSibling;
+            if (nextSibling && nextSibling.tagName === 'BR') {
+              text += '\n';
+              i++; // Skip the BR element
+            } else if (i < node.childNodes.length - 1) {
+              // Add newline if not last child and no BR follows
+              text += '\n';
+            }
+          } else if (child.hasAttribute('data-instruction')) {
+            // This is a styled instruction element
+            const instructionText = child.getAttribute('data-instruction-text') || child.textContent.trim();
+            text += `{instruction:${instructionText}}`;
+            // Check if next sibling is a BR and skip it (we'll add newline here)
+            const nextSibling = child.nextSibling;
+            if (nextSibling && nextSibling.tagName === 'BR') {
+              text += '\n';
+              i++; // Skip the BR element
+            } else if (i < node.childNodes.length - 1) {
+              // Add newline if not last child and no BR follows
+              text += '\n';
+            }
+          } else if (child.tagName === 'BR') {
             // Line break
             text += '\n';
           } else if (child.hasAttribute('data-chord')) {
@@ -414,12 +473,48 @@ export default function StyledChordEditor({
   const updateEditorContent = (text) => {
     if (!editorRef.current) return;
     
-    // Parse text and create styled HTML, handling line breaks
+    // Parse text and create styled HTML, handling line breaks, headings, and instructions
     const lines = text.split('\n');
     const fragment = document.createDocumentFragment();
     
     lines.forEach((line, lineIndex) => {
-      // Parse each line for chords
+      // Check if this line is a heading
+      const headingMatch = line.match(/^\{heading:([^}]+)\}$/);
+      if (headingMatch) {
+        const headingText = headingMatch[1].trim();
+        const p = document.createElement('p');
+        p.className = 'text-lg font-bold text-gray-800 mt-4 mb-2 first:mt-0';
+        p.setAttribute('data-heading', 'true');
+        p.setAttribute('data-heading-text', headingText);
+        p.setAttribute('contenteditable', 'true');
+        p.textContent = headingText;
+        fragment.appendChild(p);
+        // Add line break after heading (except after last line)
+        if (lineIndex < lines.length - 1) {
+          fragment.appendChild(document.createElement('br'));
+        }
+        return;
+      }
+      
+      // Check if this line is an instruction
+      const instructionMatch = line.match(/^\{instruction:([^}]+)\}$/);
+      if (instructionMatch) {
+        const instructionText = instructionMatch[1].trim();
+        const p = document.createElement('p');
+        p.className = 'text-sm italic text-gray-600 my-2 border-l-2 border-gray-300 pl-3';
+        p.setAttribute('data-instruction', 'true');
+        p.setAttribute('data-instruction-text', instructionText);
+        p.setAttribute('contenteditable', 'true');
+        p.textContent = instructionText;
+        fragment.appendChild(p);
+        // Add line break after instruction (except after last line)
+        if (lineIndex < lines.length - 1) {
+          fragment.appendChild(document.createElement('br'));
+        }
+        return;
+      }
+      
+      // Regular line - parse for chords
       const parts = line.split(/(\[[^\]]+\])/);
       
       parts.forEach((part) => {
@@ -623,6 +718,21 @@ export default function StyledChordEditor({
   };
 
   const handleInput = (e) => {
+    // Update data attributes for headings and instructions when their content changes
+    if (editorRef.current) {
+      const headingElements = editorRef.current.querySelectorAll('[data-heading]');
+      headingElements.forEach((el) => {
+        const text = el.textContent.trim();
+        el.setAttribute('data-heading-text', text);
+      });
+      
+      const instructionElements = editorRef.current.querySelectorAll('[data-instruction]');
+      instructionElements.forEach((el) => {
+        const text = el.textContent.trim();
+        el.setAttribute('data-instruction-text', text);
+      });
+    }
+    
     const text = getTextFromEditor();
     onChange({ target: { value: text } });
   };
