@@ -390,7 +390,9 @@ export default function ChordAutocomplete({
     const textarea = textareaRef.current;
     if (!textarea) return;
 
-    const text = value || '';
+    // Use current textarea value instead of potentially stale prop value
+    // This ensures we're using the actual current text when inserting, matching the cursor position that was captured
+    const text = textarea.value || '';
     const insertPos = insertPositionRef.current;
     
     // Clamp to valid range
