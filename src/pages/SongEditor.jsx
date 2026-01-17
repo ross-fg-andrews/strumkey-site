@@ -249,7 +249,7 @@ export default function SongEditor() {
         </button>
       </div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <h1 className="text-3xl font-bold">
+        <h1 className="heading-alice">
           {isEditing ? 'Edit Song' : 'Create New Song'}
         </h1>
         <button

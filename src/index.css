@@ -36,5 +36,10 @@
   .chord-marker {
     @apply text-primary-600 font-bold;
   }
+  
+  .heading-alice {
+    font-family: 'Alice', serif;
+    @apply text-[32px];
+  }
 }
 

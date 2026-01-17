@@ -23,6 +23,7 @@ export default {
       fontFamily: {
         sans: ['IBM Plex Sans', 'sans-serif'],
         mono: ['IBM Plex Mono', 'monospace'],
+        heading: ['Alice', 'serif'],
       },
     },
   },

@@ -726,7 +726,7 @@ export default function SongbookEditor() {
           <span>Back</span>
         </button>
       </div>
-      <h1 className="text-3xl font-bold">Create New Songbook</h1>
+      <h1 className="heading-alice">Create New Songbook</h1>
 
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded text-red-700">

@@ -72,7 +72,7 @@ export default function HomePage() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Welcome back!</h1>
+        <h1 className="heading-alice">Welcome back!</h1>
         <Link to="/songs/new" className="btn btn-primary">
           + New Song
         </Link>

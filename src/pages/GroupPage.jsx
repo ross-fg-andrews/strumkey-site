@@ -389,7 +389,7 @@ export default function GroupPage() {
         <div className="flex items-start justify-between mb-2">
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-3xl font-bold">{group.name}</h1>
+              <h1 className="heading-alice">{group.name}</h1>
               {isAdmin && (
                 <span className="px-2 py-1 bg-primary-100 text-primary-700 rounded text-xs font-medium">
                   Admin

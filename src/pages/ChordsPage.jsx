@@ -289,7 +289,7 @@ export default function ChordsPage() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Chords</h1>
+        <h1 className="heading-alice">Chords</h1>
       </div>
       
       {/* Error Display - show timeout warnings subtly */}

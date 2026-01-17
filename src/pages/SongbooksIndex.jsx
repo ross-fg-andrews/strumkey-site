@@ -185,7 +185,7 @@ export default function SongbooksIndex() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Songbooks</h1>
+        <h1 className="heading-alice">Songbooks</h1>
         <Link to="/songbooks/new" className="btn btn-primary">
           + New Songbook
         </Link>

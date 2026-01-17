@@ -64,7 +64,7 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-3xl font-bold">Profile</h1>
+      <h1 className="heading-alice">Profile</h1>
       
       <div className="card max-w-2xl">
         <form onSubmit={handleSubmit} className="space-y-4">

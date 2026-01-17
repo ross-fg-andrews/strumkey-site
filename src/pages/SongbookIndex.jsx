@@ -296,7 +296,7 @@ export default function SongbookIndex() {
         </div>
         <div className="flex items-start justify-between mb-2">
           <div className="flex-1">
-            <h1 className="text-3xl font-bold mb-2">{songbook.title}</h1>
+            <h1 className="heading-alice mb-2">{songbook.title}</h1>
             {songbook.description && (
               <p className="text-gray-600">{songbook.description}</p>
             )}
