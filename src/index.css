@@ -6,6 +6,11 @@
   body {
     @apply bg-gray-50 text-gray-900;
   }
+  
+  h2 {
+    font-family: 'Alice', serif;
+    font-weight: 400;
+  }
 }
 
 @layer components {
