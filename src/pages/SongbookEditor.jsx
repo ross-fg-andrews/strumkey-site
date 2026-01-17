@@ -918,28 +918,12 @@ export default function SongbookEditor() {
             </div>
           ) : (
             <div className="overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Title
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Artist
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Chords
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+              <table className="table">
+                <tbody>
                   {filteredSongs.map((song) => {
                     const uniqueChords = getUniqueChords(song);
                     return (
-                      <tr key={song.id} className="hover:bg-gray-50 transition-colors">
+                      <tr key={song.id} className="focus:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="text-gray-900 font-medium">
                             {song.title}

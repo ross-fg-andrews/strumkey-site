@@ -322,26 +322,10 @@ export default function SongbookIndex() {
           )}
         </div>
       ) : (
-        <div className="card">
+        <div>
           <div className="overflow-x-auto overflow-y-visible">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    #
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Title
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Artist
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+            <table className="table">
+              <tbody>
                 {songbookSongs.map((songbookSong, index) => {
                   const song = songbookSong.song;
                   const isMenuOpen = openMenuId === songbookSong.id;
@@ -364,7 +348,7 @@ export default function SongbookIndex() {
                     <tr 
                       key={songbookSong.id} 
                       onClick={() => navigate(`/songs/${song.id}?songbook=${id}`)}
-                      className="hover:bg-gray-50 transition-colors cursor-pointer"
+                      className="cursor-pointer focus:bg-gray-50"
                     >
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         #{index + 1}

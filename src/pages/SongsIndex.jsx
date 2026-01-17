@@ -73,16 +73,9 @@ export default function SongsIndex() {
           </button>
         </div>
       ) : (
-        <div className="card">
+        <div>
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left px-6 py-3 text-sm font-semibold text-gray-700">Title</th>
-                  <th className="text-left px-6 py-3 text-sm font-semibold text-gray-700">Artist</th>
-                  <th className="text-left px-6 py-3 text-sm font-semibold text-gray-700">Chords</th>
-                </tr>
-              </thead>
+            <table className="table">
               <tbody>
                 {songs.map((song) => {
                   const uniqueChords = getUniqueChords(song);
@@ -90,7 +83,7 @@ export default function SongsIndex() {
                     <tr
                       key={song.id}
                       onClick={() => navigate(`/songs/${song.id}`, { state: { referrer: '/songs' } })}
-                      className="hover:bg-gray-50 transition-colors cursor-pointer"
+                      className="cursor-pointer focus:bg-gray-50"
                     >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-gray-900 font-medium">
