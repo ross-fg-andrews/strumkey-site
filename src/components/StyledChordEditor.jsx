@@ -145,9 +145,8 @@ export default function StyledChordEditor({
     if (selection.rangeCount === 0) return 0;
     
     const range = selection.getRangeAt(0);
-    
-    // CRITICAL FIX: Handle case where endContainer is the editor itself (common on empty lines)
-    // When cursor is on an empty line, the browser might place the selection at the editor level
+    // CRITICAL FIX: Handle case where endContainer is the editor itself (common on empty lines or end of text)
+    // When cursor is on an empty line or at the end, the browser might place the selection at the editor level
     if (range.endContainer === editorRef.current || range.endContainer === editorRef.current.parentNode) {
       // When endContainer is the editor, endOffset is the child node INDEX before the cursor
       // So if offset=2, cursor is before child[2], meaning we've passed children 0 and 1
@@ -168,7 +167,18 @@ export default function StyledChordEditor({
           pos += getElementMarkerLength(child);
         } else if (child.nodeType === Node.ELEMENT_NODE) {
           // For other elements (like divs), count their text content
+          // But be careful - DIV/P elements might represent line breaks in getTextFromEditor
+          // For now, count text content to match the traversal logic
           pos += child.textContent.length;
+        }
+      }
+      
+      // If offset equals the number of children, cursor is at the very end
+      // Verify this matches the actual text length
+      if (offset >= editorRef.current.childNodes.length) {
+        const fullText = getTextFromEditor();
+        if (pos !== fullText.length) {
+          return fullText.length;
         }
       }
       
@@ -201,7 +211,6 @@ export default function StyledChordEditor({
         if (item.node === range.endContainer) {
           // Position is right after this BR
           pos += 1; // Count the <br> itself
-          console.log('[StyledChordEditor] getCursorPosition - BR is container, calculated pos:', pos);
           return pos;
         }
         if (item.type === 'text') {
@@ -216,7 +225,8 @@ export default function StyledChordEditor({
       }
     }
     
-    // Collect all nodes in order: text nodes, <br> elements, and chord spans
+    // Collect all nodes in order: text nodes, <br> elements, chord spans, and heading/instruction elements
+    // This must match how getTextFromEditor() counts characters
     const allNodes = [];
     const collectNodes = (node) => {
       for (let child = node.firstChild; child; child = child.nextSibling) {
@@ -225,10 +235,13 @@ export default function StyledChordEditor({
         } else if (child.tagName === 'BR') {
           allNodes.push({ type: 'br', node: child });
         } else if (child.nodeType === Node.ELEMENT_NODE && child.hasAttribute('data-chord')) {
-          // Chord span - counts as [ChordName] in text
+          // Chord span - counts as [ChordName] or [ChordName:Position] in text
           allNodes.push({ type: 'chord', node: child });
+        } else if (child.nodeType === Node.ELEMENT_NODE && (child.hasAttribute('data-heading') || child.hasAttribute('data-instruction'))) {
+          // Heading or instruction element - counts as {heading:text} or {instruction:text} in text
+          allNodes.push({ type: 'element', node: child });
         } else if (child.nodeType === Node.ELEMENT_NODE) {
-          // Recurse into other elements
+          // Recurse into other elements (like DIV/P which may represent line breaks)
           collectNodes(child);
         }
       }
@@ -237,12 +250,72 @@ export default function StyledChordEditor({
     
     let pos = 0;
     let found = false;
+    const isCollapsed = range.collapsed;
+    const containerNode = isCollapsed ? range.endContainer : range.startContainer;
+    
     for (const item of allNodes) {
-      if (item.node === range.endContainer) {
-        pos += range.endOffset;
+      // Check if this node contains the cursor
+      // For text nodes, the containerNode might be the text node itself
+      // For other nodes, we need to check if the containerNode is within this item
+      let nodeMatches = false;
+      
+      if (item.node === containerNode) {
+        // Direct match
+        nodeMatches = true;
+      } else if (containerNode.nodeType === Node.TEXT_NODE && item.type === 'text') {
+        // Check if the containerNode is the same text node (might be a reference issue)
+        // Also check if containerNode is a child of item.node (shouldn't happen for text nodes, but just in case)
+        if (containerNode === item.node || containerNode.parentNode === item.node) {
+          nodeMatches = true;
+        }
+      }
+      
+      if (nodeMatches) {
+        // For collapsed range (cursor), use endOffset as it represents the insertion point
+        // For non-collapsed (selection), use startOffset
+        let offset = isCollapsed ? range.endOffset : range.startOffset;
+        
+        // The browser's offset is 0-based and represents position BEFORE the character at that index.
+        // Observation: When clicking between two DIFFERENT characters (like 'o' and 't'), the browser
+        // reports the offset one position too early. But when clicking between IDENTICAL characters,
+        // the browser may report it at the first character (before it) or between them.
+        //
+        // Key insight: The browser's offset represents position BEFORE the character at that index.
+        // When clicking between characters:
+        // - For DIFFERENT characters: browser reports one position too early → add 1
+        // - For IDENTICAL characters: If charBefore === charAt, we're at second char (between them) → no adjustment
+        //                              If charAt === charAfter, we're at first char (before them) → add 1
+        //
+        // The key is: we want to insert AFTER the character the user clicked after.
+        // If charAt === charAfter, we're at the first of two identical chars, so add 1.
+        // If charBefore === charAt, we're at the second (already between them), so don't add 1.
+        
+        if (item.type === 'text' && offset < item.node.textContent.length) {
+          const charAtOffset = item.node.textContent[offset];
+          const charBeforeOffset = offset > 0 ? item.node.textContent[offset - 1] : null;
+          const charAfterOffset = offset < item.node.textContent.length - 1 ? item.node.textContent[offset + 1] : null;
+          
+          // If we're at the second of two identical characters (charBefore === charAt),
+          // we're already between them, so no adjustment
+          if (charBeforeOffset === charAtOffset) {
+          }
+          // If we're at the first of two identical characters (charAt === charAfter),
+          // we need to add 1 to get between them
+          else if (charAfterOffset && charAtOffset === charAfterOffset) {
+            offset += 1;
+          }
+          // For different characters, add 1 (browser reports one position too early)
+          else {
+            offset += 1;
+          }
+        }
+        
+        pos += offset;
         found = true;
         break;
       }
+      
+      // Add length of this node to pos (for nodes before the cursor)
       if (item.type === 'text') {
         pos += item.node.textContent.length;
       } else if (item.type === 'br') {
@@ -250,20 +323,70 @@ export default function StyledChordEditor({
       } else if (item.type === 'chord') {
         // Calculate chord marker length (accounts for position format)
         pos += getChordMarkerLength(item.node);
+      } else if (item.type === 'element') {
+        // Calculate heading/instruction marker length
+        pos += getElementMarkerLength(item.node);
       }
     }
     
-    // If we didn't find the container, it might be nested deeper
-    // Try to find it in the DOM tree
-    if (!found && range.endContainer.nodeType === Node.TEXT_NODE) {
-      // Recalculate by finding the text node in our tree
-      const textContent = range.endContainer.textContent;
-      const offset = range.endOffset;
-      // This is a fallback - try to find the position by text matching
+    // If we didn't find the container, try fallback methods
+    if (!found) {
+      
+      // Fallback 1: If containerNode is a text node, try to find it by text content matching
+      if (containerNode.nodeType === Node.TEXT_NODE) {
+        const textContent = containerNode.textContent;
+        const offset = isCollapsed ? range.endOffset : range.startOffset;
+        const fullText = getTextFromEditor();
+        
+        // Try to find the text node's content in the full text
+        // This handles cases where the text node might be split or merged
+        const index = fullText.indexOf(textContent);
+        if (index !== -1) {
+          const calculatedPos = index + offset;
+          return calculatedPos;
+        }
+      }
+      
+      // Fallback 2: Use a more direct approach - walk the DOM and count characters
+      // This is more reliable when nodes aren't found in our collected list
+      let directPos = 0;
+      const walker = document.createTreeWalker(
+        editorRef.current,
+        NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+        {
+          acceptNode: (node) => {
+            if (node.nodeType === Node.TEXT_NODE) return NodeFilter.FILTER_ACCEPT;
+            if (node.tagName === 'BR') return NodeFilter.FILTER_ACCEPT;
+            if (node.hasAttribute && (node.hasAttribute('data-chord') || node.hasAttribute('data-heading') || node.hasAttribute('data-instruction'))) {
+              return NodeFilter.FILTER_ACCEPT;
+            }
+            return NodeFilter.FILTER_SKIP;
+          }
+        }
+      );
+      
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node === containerNode && node.nodeType === Node.TEXT_NODE) {
+          const offset = isCollapsed ? range.endOffset : range.startOffset;
+          directPos += offset;
+          return directPos;
+        }
+        if (node.nodeType === Node.TEXT_NODE) {
+          directPos += node.textContent.length;
+        } else if (node.tagName === 'BR') {
+          directPos += 1;
+        } else if (node.hasAttribute('data-chord')) {
+          directPos += getChordMarkerLength(node);
+        } else if (node.hasAttribute('data-heading') || node.hasAttribute('data-instruction')) {
+          directPos += getElementMarkerLength(node);
+        }
+      }
+      
+      // Fallback 3: Last resort - use the calculated pos or text length
       const fullText = getTextFromEditor();
-      const index = fullText.indexOf(textContent);
-      if (index !== -1) {
-        return index + offset;
+      if (pos > fullText.length) {
+        return fullText.length;
       }
     }
     
@@ -708,6 +831,11 @@ export default function StyledChordEditor({
           // Store immediately - this must happen synchronously
           insertPositionRef.current = cursorPos;
           
+          // Debug: log the captured position
+          const currentText = getTextFromEditor();
+          const before = currentText.substring(Math.max(0, cursorPos - 5), cursorPos);
+          const after = currentText.substring(cursorPos, Math.min(currentText.length, cursorPos + 5));
+          
           // Now update UI state (this is async but position is already captured in ref)
           setQuery('');
           setSelectedIndex(0);
@@ -744,12 +872,23 @@ export default function StyledChordEditor({
     const currentText = getTextFromEditor();
     let insertPos = insertPositionRef.current;
     
-    // Clamp insert position to valid range
-    if (insertPos < 0) insertPos = 0;
-    if (insertPos > currentText.length) insertPos = currentText.length;
+    // Validate and clamp insert position to valid range
+    if (insertPos < 0) {
+      console.warn('[StyledChordEditor] insertChord - insertPos was negative, clamping to 0');
+      insertPos = 0;
+    }
+    if (insertPos > currentText.length) {
+      console.warn('[StyledChordEditor] insertChord - insertPos exceeds text length, clamping. insertPos:', insertPos, 'text.length:', currentText.length);
+      insertPos = currentText.length;
+    }
     
+    // Split text at insertion point
     const before = currentText.substring(0, insertPos);
     const after = currentText.substring(insertPos);
+    
+    // Debug logging to help diagnose position issues
+    const debugBefore = currentText.substring(Math.max(0, insertPos - 10), insertPos);
+    const debugAfter = currentText.substring(insertPos, Math.min(currentText.length, insertPos + 10));
 
     const charBefore = before.length > 0 ? before[before.length - 1] : null;
     const charAfter = after.length > 0 ? after[0] : null;
@@ -824,8 +963,6 @@ export default function StyledChordEditor({
     if (insertPos < 0) insertPos = 0;
     if (insertPos > currentText.length) insertPos = currentText.length;
     
-    console.log('[StyledChordEditor] insertElement - final insertPos:', insertPos,
-      'text around pos:', JSON.stringify(currentText.substring(Math.max(0, insertPos - 5), Math.min(currentText.length, insertPos + 5))));
     
     const before = currentText.substring(0, insertPos);
     const after = currentText.substring(insertPos);
