@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useMySongs, useMyGroups } from '../db/queries';
+import { useMySongs, useMyGroups, useRecentlyPlayedSongs } from '../db/queries';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
 import { MicrophoneStageIcon } from '../utils/icons';
 
@@ -47,14 +47,14 @@ function ChordLabels({ chords }) {
 export default function HomePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const songsQuery = useMySongs(user?.id);
+  const recentlyPlayedQuery = useRecentlyPlayedSongs(user?.id);
   const groupsQuery = useMyGroups(user?.id);
   
   // Log any query errors for debugging
-  if (songsQuery.error) {
-    console.error('useMySongs error:', songsQuery.error);
-    console.error('useMySongs error hint:', songsQuery.error.hint);
-    console.error('useMySongs error details:', JSON.stringify(songsQuery.error, null, 2));
+  if (recentlyPlayedQuery.error) {
+    console.error('useRecentlyPlayedSongs error:', recentlyPlayedQuery.error);
+    console.error('useRecentlyPlayedSongs error hint:', recentlyPlayedQuery.error.hint);
+    console.error('useRecentlyPlayedSongs error details:', JSON.stringify(recentlyPlayedQuery.error, null, 2));
   }
   if (groupsQuery.error) {
     console.error('useMyGroups error:', groupsQuery.error);
@@ -62,10 +62,10 @@ export default function HomePage() {
     console.error('useMyGroups error details:', JSON.stringify(groupsQuery.error, null, 2));
   }
   
-  const songsData = songsQuery.data;
+  const recentlyPlayedData = recentlyPlayedQuery.data;
   const groupsData = groupsQuery.data;
 
-  const songs = songsData?.songs || [];
+  const songs = recentlyPlayedData?.songs || [];
   const groups = groupsData?.groupMembers
     ?.map(gm => gm.group)
     .filter(group => group && group.id) || [];
@@ -79,17 +79,17 @@ export default function HomePage() {
         </Link>
       </div>
 
-      {/* My Songs */}
+      {/* Recently Played */}
       <section>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-semibold">My Songs</h2>
-          <Link to="/songs/new" className="text-primary-600 hover:underline">
-            Create new
+          <h2 className="text-2xl font-semibold">Recently Played</h2>
+          <Link to="/songs" className="text-primary-600 hover:underline">
+            View All My Songs
           </Link>
         </div>
         {songs.length === 0 ? (
           <div className="card text-center py-8 text-gray-500">
-            <p>No songs yet. Create your first song!</p>
+            <p>No recently played songs yet. Play a song for 60 seconds or more to see it here!</p>
           </div>
         ) : (
           <div className="overflow-hidden">

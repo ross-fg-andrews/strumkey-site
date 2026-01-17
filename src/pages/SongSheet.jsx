@@ -4,7 +4,7 @@ import { db } from '../db/schema';
 import { renderInlineChords, renderAboveChords, parseLyricsWithChords, lyricsWithChordsToText, extractElements } from '../utils/lyrics-helpers';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { deleteSong, createSong, updateSong, shareSongsWithGroups } from '../db/mutations';
+import { deleteSong, createSong, updateSong, shareSongsWithGroups, recordSongPlay } from '../db/mutations';
 import { AppError, ERROR_CODES } from '../utils/error-handling';
 import ChordAutocomplete from '../components/ChordAutocomplete';
 import StyledChordEditor from '../components/StyledChordEditor';
@@ -150,6 +150,37 @@ export default function SongSheet() {
       setLyricsText('');
     }
   }, [isEditing, isCreateMode, song]);
+
+  // Track song plays - record a play when user views a song for 60+ seconds
+  useEffect(() => {
+    // Only track plays for:
+    // - View mode (not edit mode or create mode)
+    // - Saved songs (has an id - not new/unsaved songs)
+    // - Authenticated users
+    // - Existing songs (song object exists)
+    if (!isViewMode || !song || !song.id || !user?.id || isEditing || isCreateMode) {
+      return;
+    }
+
+    // Start 60-second timer
+    const timerId = setTimeout(() => {
+      // Timer completed - record the play
+      recordSongPlay(song.id, user.id).catch((error) => {
+        console.error('Error recording song play:', error);
+        // Don't throw - play tracking failures shouldn't break the app
+      });
+    }, 60000); // 60 seconds
+
+    // Cleanup function - clear timer if:
+    // - Component unmounts
+    // - User navigates away
+    // - User enters edit mode
+    // - Song changes
+    // - Mode changes
+    return () => {
+      clearTimeout(timerId);
+    };
+  }, [isViewMode, song?.id, user?.id, isEditing, isCreateMode]);
 
   // Close menu when clicking outside
   useEffect(() => {

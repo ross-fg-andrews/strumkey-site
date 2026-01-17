@@ -839,3 +839,88 @@ export function useUserByEmail(email) {
 
   return { data, error };
 }
+
+// Get recently played songs for a user
+// Returns the 15 most recently played songs, deduplicated by song ID
+// (each song appears once at its most recent play position)
+export function useRecentlyPlayedSongs(userId) {
+  // Always call hooks unconditionally to satisfy React's rules of hooks
+  // Use an impossible condition when userId is null
+  const { data, error } = db.useQuery({
+    songPlays: {
+      $: {
+        where: userId
+          ? { userId }
+          : { userId: '' }, // Impossible condition when no userId
+        order: { playedAt: 'desc' },
+      },
+      song: {},
+    },
+  });
+
+  if (!userId) {
+    return { data: { songs: [] }, error: null };
+  }
+
+  // Get song IDs from songPlays for fallback query
+  const songPlays = data?.songPlays || [];
+  const songIds = songPlays.map(play => play.songId).filter(Boolean);
+
+  // Fallback query: get songs directly if relation isn't populated
+  const { data: directSongsData } = db.useQuery({
+    songs: {
+      $: {
+        where: songIds.length > 0 ? { id: { $in: songIds } } : { id: '' },
+      },
+    },
+  });
+
+  // Build a map of song IDs to songs for easy lookup
+  const songsMap = new Map();
+
+  // First, try to get songs from the relation
+  for (const play of songPlays) {
+    // Handle both single song object and array of songs (depending on relation type)
+    let song = null;
+    if (play.song) {
+      // If song is an array, take the first one
+      song = Array.isArray(play.song) ? play.song[0] : play.song;
+    }
+    
+    if (song && song.id && play.songId) {
+      songsMap.set(play.songId, song);
+    }
+  }
+
+  // Also add songs from direct query (in case relation isn't populated)
+  if (directSongsData?.songs) {
+    for (const song of directSongsData.songs) {
+      if (song && song.id && !songsMap.has(song.id)) {
+        songsMap.set(song.id, song);
+      }
+    }
+  }
+
+  // Convert map to array, maintaining order from songPlays (most recent first)
+  const seenSongIds = new Set();
+  const uniqueSongs = [];
+  
+  for (const play of songPlays) {
+    if (play.songId && songsMap.has(play.songId) && !seenSongIds.has(play.songId)) {
+      const song = songsMap.get(play.songId);
+      if (song && song.id) {
+        seenSongIds.add(play.songId);
+        uniqueSongs.push(song);
+        // Stop once we have 15 unique songs
+        if (uniqueSongs.length >= 15) {
+          break;
+        }
+      }
+    }
+  }
+
+  return {
+    data: { songs: uniqueSongs },
+    error,
+  };
+}

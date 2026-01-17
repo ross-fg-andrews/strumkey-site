@@ -854,3 +854,24 @@ export async function useInvite(inviteId, userId) {
     })
   );
 }
+
+/**
+ * Record a song play event
+ * Records every play separately (full history, not just updating last played)
+ * @param {string} songId - Song ID that was played
+ * @param {string} userId - User ID who played the song
+ * @returns {Promise} Transaction promise
+ */
+export async function recordSongPlay(songId, userId) {
+  if (!songId || !userId) {
+    throw new Error('songId and userId are required to record a play');
+  }
+
+  return db.transact(
+    db.tx.songPlays[id()].update({
+      songId,
+      userId,
+      playedAt: Date.now(),
+    })
+  );
+}
