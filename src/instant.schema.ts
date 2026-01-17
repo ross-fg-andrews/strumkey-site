@@ -106,6 +106,11 @@ const _schema = i.schema({
       sharedBy: i.string(),
       songId: i.string(),
     }),
+    songPlays: i.entity({
+      songId: i.string().indexed(),
+      userId: i.string().indexed(),
+      playedAt: i.number().indexed(),
+    }),
     users: i.entity({
       createdAt: i.number(),
       email: i.string().optional(),
@@ -281,6 +286,30 @@ const _schema = i.schema({
         on: "songs",
         has: "many",
         label: "shares",
+      },
+    },
+    songPlaysSong: {
+      forward: {
+        on: "songPlays",
+        has: "many",
+        label: "song",
+      },
+      reverse: {
+        on: "songs",
+        has: "many",
+        label: "plays",
+      },
+    },
+    songPlaysUser: {
+      forward: {
+        on: "songPlays",
+        has: "many",
+        label: "user",
+      },
+      reverse: {
+        on: "$users",
+        has: "many",
+        label: "songPlays",
       },
     },
   },
