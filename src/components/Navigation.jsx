@@ -13,6 +13,7 @@ import {
   GearIcon,
   LogOutIcon,
   AdminIcon,
+  ChordIcon,
 } from '../utils/icons';
 
 export default function Navigation() {
@@ -54,6 +55,7 @@ export default function Navigation() {
     { name: 'Home', path: '/home', icon: HomeIcon },
     { name: 'Songs', path: '/songs', icon: MusicIcon },
     { name: 'Songbooks', path: '/songbooks', icon: BookIcon },
+    { name: 'Chords', path: '/chords', icon: ChordIcon },
     { name: 'Groups', path: '/groups', icon: UsersIcon },
   ];
 
