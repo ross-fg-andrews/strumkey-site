@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useMySongs } from '../db/queries';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
+import { MicrophoneStageIcon } from '../utils/icons';
 
 // Helper function to extract unique chords from song chords data
 function getUniqueChords(song) {
@@ -53,7 +54,7 @@ export default function SongsIndex() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">My Songs</h1>
+        <h1 className="heading-alice">My Songs</h1>
         <button
           onClick={() => navigate('/songs/new')}
           className="btn btn-primary"
@@ -73,16 +74,9 @@ export default function SongsIndex() {
           </button>
         </div>
       ) : (
-        <div className="card">
+        <div>
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left px-6 py-3 text-sm font-semibold text-gray-700">Title</th>
-                  <th className="text-left px-6 py-3 text-sm font-semibold text-gray-700">Artist</th>
-                  <th className="text-left px-6 py-3 text-sm font-semibold text-gray-700">Chords</th>
-                </tr>
-              </thead>
+            <table className="table">
               <tbody>
                 {songs.map((song) => {
                   const uniqueChords = getUniqueChords(song);
@@ -90,17 +84,24 @@ export default function SongsIndex() {
                     <tr
                       key={song.id}
                       onClick={() => navigate(`/songs/${song.id}`, { state: { referrer: '/songs' } })}
-                      className="hover:bg-gray-50 transition-colors cursor-pointer"
+                      className="cursor-pointer focus:bg-gray-50"
                     >
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-gray-900 font-medium">
-                          {song.title}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-gray-600">
-                          {song.artist || '-'}
-                        </span>
+                      <td className="px-6 py-4 align-middle">
+                        <div className="flex flex-col">
+                          <span className="font-['Alice',_serif] text-[20px] text-gray-900 leading-tight">
+                            {song.title}
+                          </span>
+                          {song.artist ? (
+                            <div className="flex items-center gap-0.5 mt-0">
+                              <MicrophoneStageIcon size={14} className="text-gray-500" />
+                              <span className="text-[14px] text-gray-500 leading-tight">
+                                {song.artist}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-[14px] text-gray-400 mt-0 leading-tight">—</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <ChordLabels chords={uniqueChords} />

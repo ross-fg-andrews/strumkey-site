@@ -746,7 +746,7 @@ export default function SongSheet() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Song Title"
-            className="text-4xl font-bold mb-2 w-full bg-transparent border-b-2 border-transparent focus:border-gray-300 outline-none p-0 transition-colors placeholder:text-gray-400"
+            className="heading-alice mb-2 w-full bg-transparent border-b-2 border-transparent focus:border-gray-300 outline-none p-0 transition-colors placeholder:text-gray-400"
           />
           
           {/* Editable Artist */}
@@ -903,7 +903,7 @@ export default function SongSheet() {
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="text-4xl font-bold mb-2 w-full bg-transparent border-b-2 border-transparent focus:border-gray-300 outline-none p-0 transition-colors"
+                    className="heading-alice mb-2 w-full bg-transparent border-b-2 border-transparent focus:border-gray-300 outline-none p-0 transition-colors"
                   />
                   <input
                     type="text"
@@ -923,7 +923,7 @@ export default function SongSheet() {
                         className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
                         aria-label="Select song from songbook"
                       >
-                        <h1 className="text-4xl font-bold">{song.title}</h1>
+                        <h1 className="heading-alice">{song.title}</h1>
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
                           className={`h-5 w-5 text-gray-600 transition-transform ${songSelectorOpen ? 'rotate-180' : ''}`}
@@ -968,7 +968,7 @@ export default function SongSheet() {
                       )}
                     </div>
                   ) : (
-                    <h1 className="text-4xl font-bold">{song.title}</h1>
+                    <h1 className="heading-alice">{song.title}</h1>
                   )}
                 </div>
                 {song.artist && (

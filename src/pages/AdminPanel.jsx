@@ -98,7 +98,7 @@ export default function AdminPanel() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Admin Panel</h1>
+        <h1 className="heading-alice">Admin Panel</h1>
       </div>
 
       {/* Create Invite Section */}
@@ -139,35 +139,16 @@ export default function AdminPanel() {
       </div>
 
       {/* Invites List */}
-      <div className="card">
+      <div>
         <h2 className="text-2xl font-semibold mb-4">Invites ({invites.length})</h2>
         {invites.length === 0 ? (
           <p className="text-gray-500">No invites created yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Created
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Used By
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+            <table className="table">
+              <tbody>
                 {invites.map((invite) => (
-                  <tr key={invite.id}>
+                  <tr key={invite.id} className="focus:bg-gray-50">
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                       {invite.email}
                     </td>
@@ -205,29 +186,16 @@ export default function AdminPanel() {
       </div>
 
       {/* Waiting List */}
-      <div className="card">
+      <div>
         <h2 className="text-2xl font-semibold mb-4">Waiting List ({waitingList.length})</h2>
         {waitingList.length === 0 ? (
           <p className="text-gray-500">No one on the waiting list yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Joined
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Notified
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+            <table className="table">
+              <tbody>
                 {waitingList.map((entry) => (
-                  <tr key={entry.id}>
+                  <tr key={entry.id} className="focus:bg-gray-50">
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                       {entry.email}
                     </td>

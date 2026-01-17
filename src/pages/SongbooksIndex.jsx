@@ -185,7 +185,7 @@ export default function SongbooksIndex() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Songbooks</h1>
+        <h1 className="heading-alice">Songbooks</h1>
         <Link to="/songbooks/new" className="btn btn-primary">
           + New Songbook
         </Link>
@@ -197,26 +197,10 @@ export default function SongbooksIndex() {
           <p className="text-sm">Create a songbook to organize your songs</p>
         </div>
       ) : (
-        <div className="card" style={{ position: 'relative', overflow: 'visible' }}>
+        <div style={{ position: 'relative', overflow: 'visible' }}>
           <div className="overflow-x-auto" style={{ overflowY: 'visible' }}>
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Title
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Description
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+            <table className="table">
+              <tbody>
                 {songbooks.map((songbook) => {
                   const isMenuOpen = openMenuId === songbook.id;
                   const isDeleting = deletingId === songbook.id;
@@ -226,7 +210,7 @@ export default function SongbooksIndex() {
                     <tr 
                       key={songbook.id} 
                       onClick={() => navigate(`/songbooks/${songbook.id}`)}
-                      className="hover:bg-gray-50 transition-colors cursor-pointer"
+                      className="cursor-pointer focus:bg-gray-50"
                     >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm font-medium text-gray-900">

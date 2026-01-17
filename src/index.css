@@ -36,5 +36,22 @@
   .chord-marker {
     @apply text-primary-600 font-bold;
   }
+  
+  .heading-alice {
+    font-family: 'Alice', serif;
+    @apply text-[32px];
+  }
+  
+  .table {
+    @apply w-full;
+  }
+  
+  .table tbody {
+    @apply divide-y divide-gray-200;
+  }
+  
+  .table tbody tr {
+    @apply hover:bg-gray-100 focus:bg-gray-100 transition-colors;
+  }
 }
 

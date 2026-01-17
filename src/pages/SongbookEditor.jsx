@@ -6,6 +6,7 @@ import { useAccessibleSongs, useSongbook, useMySongbooks } from '../db/queries';
 import { getChordNames, searchChordNames } from '../utils/chord-library';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
 import { db } from '../db/schema';
+import { MicrophoneStageIcon } from '../utils/icons';
 
 // Helper function to extract unique chords from song chords data
 function getUniqueChords(song) {
@@ -726,7 +727,7 @@ export default function SongbookEditor() {
           <span>Back</span>
         </button>
       </div>
-      <h1 className="text-3xl font-bold">Create New Songbook</h1>
+      <h1 className="heading-alice">Create New Songbook</h1>
 
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded text-red-700">
@@ -918,35 +919,28 @@ export default function SongbookEditor() {
             </div>
           ) : (
             <div className="overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Title
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Artist
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Chords
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+              <table className="table">
+                <tbody>
                   {filteredSongs.map((song) => {
                     const uniqueChords = getUniqueChords(song);
                     return (
-                      <tr key={song.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-gray-900 font-medium">
-                            {song.title}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-600">
-                          {song.artist || <span className="text-gray-400">—</span>}
+                      <tr key={song.id} className="focus:bg-gray-50">
+                        <td className="px-6 py-4 align-middle">
+                          <div className="flex flex-col">
+                            <span className="font-['Alice',_serif] text-[20px] text-gray-900 leading-tight">
+                              {song.title}
+                            </span>
+                            {song.artist ? (
+                              <div className="flex items-center gap-0.5 mt-0">
+                                <MicrophoneStageIcon size={14} className="text-gray-500" />
+                                <span className="text-[14px] text-gray-500 leading-tight">
+                                  {song.artist}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-[14px] text-gray-400 mt-0 leading-tight">—</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4">
                           <ChordLabels chords={uniqueChords} />

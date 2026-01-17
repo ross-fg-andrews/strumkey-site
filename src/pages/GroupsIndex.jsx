@@ -156,7 +156,7 @@ export default function GroupsIndex() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Groups</h1>
+        <h1 className="heading-alice">Groups</h1>
         {user && (
           <button
             onClick={() => setShowCreateModal(true)}
