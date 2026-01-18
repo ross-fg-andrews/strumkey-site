@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useSongActions } from '../contexts/SongActionsContext';
 import { db } from '../db/schema';
 import {
   MenuIcon,
@@ -50,6 +51,23 @@ export default function Navigation() {
 
   // Detect if we're on a song page (but not /songs index)
   const isSongPage = location.pathname.startsWith('/songs/') && location.pathname !== '/songs';
+  
+  // Get song actions context (only available when viewing a song)
+  const songActions = useSongActions();
+  
+  // Close menu when clicking outside (for song actions menu)
+  useEffect(() => {
+    if (!songActions?.menuRef || !songActions?.menuOpen) return;
+    
+    function handleClickOutside(event) {
+      if (songActions.menuRef.current && !songActions.menuRef.current.contains(event.target)) {
+        songActions.setMenuOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [songActions?.menuOpen, songActions?.menuRef, songActions?.setMenuOpen]);
   
   // Reset song browser state when navigating away from song page
   useEffect(() => {
@@ -115,7 +133,87 @@ export default function Navigation() {
           
           {/* Right: Reserved for contextual buttons */}
           <div className="flex items-center gap-2">
-            {/* Future contextual buttons will go here */}
+            {/* Song Actions Menu Button (ellipsis) */}
+            {isSongPage && songActions && (
+              <div className="relative" ref={songActions.menuRef}>
+                <button
+                  onClick={() => songActions.setMenuOpen(!songActions.menuOpen)}
+                  className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
+                  aria-label="Song actions"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-6 w-6"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
+                    />
+                  </svg>
+                </button>
+
+                {songActions.menuOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                    <div className="py-1">
+                      <button
+                        onClick={() => songActions.handleChordModeChange('inline')}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                          songActions.chordMode === 'inline' ? 'bg-gray-50 font-medium' : ''
+                        }`}
+                      >
+                        Inline Chords
+                      </button>
+                      <button
+                        onClick={() => songActions.handleChordModeChange('above')}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                          songActions.chordMode === 'above' ? 'bg-gray-50 font-medium' : ''
+                        }`}
+                      >
+                        Chords Above
+                      </button>
+                      {songActions.isCreator && (
+                        <>
+                          <div className="border-t border-gray-200 my-1"></div>
+                          <button
+                            onClick={songActions.handleShareClick}
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
+                          >
+                            Share with Group
+                          </button>
+                        </>
+                      )}
+                      {songActions.canEdit && (
+                        <>
+                          <div className="border-t border-gray-200 my-1"></div>
+                          <button
+                            onClick={songActions.handleEditClick}
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
+                          >
+                            Edit
+                          </button>
+                        </>
+                      )}
+                      {songActions.isCreator && (
+                        <>
+                          <div className="border-t border-gray-200 my-1"></div>
+                          <button
+                            onClick={songActions.handleDeleteClick}
+                            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

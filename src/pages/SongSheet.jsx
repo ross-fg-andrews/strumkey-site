@@ -4,6 +4,7 @@ import { db } from '../db/schema';
 import { renderInlineChords, renderAboveChords, parseLyricsWithChords, lyricsWithChordsToText, extractElements } from '../utils/lyrics-helpers';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useRegisterSongActions } from '../contexts/SongActionsContext';
 import { deleteSong, createSong, updateSong, shareSongsWithGroups, recordSongPlay } from '../db/mutations';
 import { AppError, ERROR_CODES } from '../utils/error-handling';
 import ChordAutocomplete from '../components/ChordAutocomplete';
@@ -182,22 +183,19 @@ export default function SongSheet() {
     };
   }, [isViewMode, song?.id, user?.id, isEditing, isCreateMode]);
 
-  // Close menu when clicking outside
+  // Close song selector when clicking outside (menu click-outside is handled in Navigation)
   useEffect(() => {
     function handleClickOutside(event) {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setMenuOpen(false);
-      }
       if (songSelectorRef.current && !songSelectorRef.current.contains(event.target)) {
         setSongSelectorOpen(false);
       }
     }
 
-    if (menuOpen || songSelectorOpen) {
+    if (songSelectorOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [menuOpen, songSelectorOpen]);
+  }, [songSelectorOpen]);
 
   // Parse chords from JSON string (must be before early returns for hooks)
   // Always ensure chords is an array to maintain consistent hook dependencies
@@ -670,6 +668,62 @@ export default function SongSheet() {
     }
   };
 
+  // Get register function for song actions
+  const registerSongActions = useRegisterSongActions();
+
+  // Create context value for song actions (only in view mode)
+  // MUST be before any early returns to follow Rules of Hooks
+  const songActionsValue = useMemo(() => {
+    if (!isViewMode || isEditing || !song) {
+      return null;
+    }
+    
+    return {
+      menuOpen,
+      setMenuOpen,
+      menuRef,
+      chordMode,
+      setChordMode,
+      canEdit,
+      isCreator,
+      handleEditClick: () => {
+        // Store current chord mode before entering edit mode
+        setPreviousChordMode(chordMode);
+        // Force inline mode for editing (users can't position chords in "chords above" view)
+        if (chordMode === 'above') {
+          setChordMode('inline');
+        }
+        setIsEditing(true);
+        setMenuOpen(false);
+      },
+      handleShareClick: () => {
+        setShowShareModal(true);
+        setMenuOpen(false);
+      },
+      handleDeleteClick: () => {
+        setShowDeleteModal(true);
+        setMenuOpen(false);
+      },
+      handleChordModeChange: (mode) => {
+        setChordMode(mode);
+        setMenuOpen(false);
+      },
+    };
+  }, [isViewMode, isEditing, menuOpen, chordMode, canEdit, isCreator, song, setChordMode, setMenuOpen]);
+
+  // Register/unregister song actions when value changes
+  useEffect(() => {
+    if (registerSongActions) {
+      registerSongActions(songActionsValue);
+    }
+    // Cleanup: unregister when component unmounts or value becomes null
+    return () => {
+      if (registerSongActions) {
+        registerSongActions(null);
+      }
+    };
+  }, [songActionsValue, registerSongActions]);
+
 
   // Show loading state when viewing and song is not yet loaded
   if (isViewMode && id && !song && !error) {
@@ -794,7 +848,6 @@ export default function SongSheet() {
   
   // Parse elements for styling (only if we're not editing)
   const { headings, instructions } = !isEditing && song.lyrics ? extractElements(song.lyrics) : { headings: [], instructions: [] };
-
 
   return (
     <div>
@@ -996,107 +1049,6 @@ export default function SongSheet() {
                   </span>
                 </div>
               </div>
-            )}
-            {!isEditing && (
-              <div className="relative" ref={menuRef}>
-                <button
-                  onClick={() => setMenuOpen(!menuOpen)}
-                  className="btn p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                  aria-label="Song actions"
-                >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
-                />
-              </svg>
-            </button>
-
-            {menuOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
-                <div className="py-1">
-                  <button
-                    onClick={() => {
-                      setChordMode('inline');
-                      setMenuOpen(false);
-                    }}
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
-                      chordMode === 'inline' ? 'bg-gray-50 font-medium' : ''
-                    }`}
-                  >
-                    Inline Chords
-                  </button>
-                  <button
-                    onClick={() => {
-                      setChordMode('above');
-                      setMenuOpen(false);
-                    }}
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
-                      chordMode === 'above' ? 'bg-gray-50 font-medium' : ''
-                    }`}
-                  >
-                    Chords Above
-                  </button>
-                  {isCreator && (
-                    <>
-                      <div className="border-t border-gray-200 my-1"></div>
-                      <button
-                        onClick={() => {
-                          setShowShareModal(true);
-                          setMenuOpen(false);
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
-                      >
-                        Share with Group
-                      </button>
-                    </>
-                  )}
-                  {canEdit && (
-                    <>
-                      <div className="border-t border-gray-200 my-1"></div>
-                      <button
-                        onClick={() => {
-                          // Store current chord mode before entering edit mode
-                          setPreviousChordMode(chordMode);
-                          // Force inline mode for editing (users can't position chords in "chords above" view)
-                          if (chordMode === 'above') {
-                            setChordMode('inline');
-                          }
-                          setIsEditing(true);
-                          setMenuOpen(false);
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
-                      >
-                        Edit
-                      </button>
-                    </>
-                  )}
-                  {isCreator && (
-                    <>
-                      <div className="border-t border-gray-200 my-1"></div>
-                      <button
-                        onClick={() => {
-                          setShowDeleteModal(true);
-                          setMenuOpen(false);
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                      >
-                        Delete
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
             )}
           </div>
         </div>

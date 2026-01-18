@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import Navigation from './Navigation';
 import { useAuth } from '../contexts/AuthContext';
+import { SongActionsProvider } from '../contexts/SongActionsContext';
 
 export default function Layout() {
   const { isAuthenticated, loading } = useAuth();
@@ -26,12 +27,14 @@ export default function Layout() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navigation />
-      <main className="w-full px-4 pb-8 pt-4 xl:container xl:mx-auto">
-        <Outlet />
-      </main>
-    </div>
+    <SongActionsProvider>
+      <div className="min-h-screen bg-gray-50">
+        <Navigation />
+        <main className="w-full px-4 pb-8 pt-4 xl:container xl:mx-auto">
+          <Outlet />
+        </main>
+      </div>
+    </SongActionsProvider>
   );
 }
 
