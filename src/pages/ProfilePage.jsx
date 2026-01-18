@@ -32,6 +32,7 @@ export default function ProfilePage() {
   const cityInputRef = useRef(null);
   const suggestionsRef = useRef(null);
   const debounceTimeoutRef = useRef(null);
+  const isSelectingRef = useRef(false); // Track when user is selecting a city
 
   // Create session token when component mounts
   useEffect(() => {
@@ -65,15 +66,31 @@ export default function ProfilePage() {
 
   // Debounced city search
   useEffect(() => {
+    // Don't search if we're in the middle of selecting a city
+    if (isSelectingRef.current) {
+      return;
+    }
+
     if (!cityQuery || cityQuery.trim().length < 2) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;
     }
 
-    // Don't search if it matches the current selected city
-    if (selectedCity && cityQuery === (selectedCity.displayName || `${selectedCity.city}, ${selectedCity.country}`)) {
-      return;
+    // Don't search if we have a selected city and the query matches it
+    // This prevents reopening the dropdown after selection
+    if (selectedCity) {
+      const selectedDisplayName = selectedCity.displayName || 
+        (selectedCity.city && selectedCity.country 
+          ? `${selectedCity.city}, ${selectedCity.country}`
+          : selectedCity.city);
+      
+      if (cityQuery.trim() === selectedDisplayName) {
+        // Query matches selected city, don't search
+        setSuggestions([]);
+        setShowSuggestions(false);
+        return;
+      }
     }
 
     // Clear previous timeout
@@ -86,10 +103,19 @@ export default function ProfilePage() {
 
     // Debounce the API call
     debounceTimeoutRef.current = setTimeout(async () => {
+      // Double-check we're not selecting (race condition protection)
+      if (isSelectingRef.current) {
+        setLoading(false);
+        return;
+      }
+
       try {
         const results = await searchCities(cityQuery.trim(), sessionToken);
         setSuggestions(results);
-        setShowSuggestions(true);
+        // Only show suggestions if we're not selecting and don't have a selected city
+        if (!isSelectingRef.current && !selectedCity) {
+          setShowSuggestions(true);
+        }
       } catch (err) {
         console.error('Error fetching city suggestions:', err);
         setSuggestions([]);
@@ -108,20 +134,41 @@ export default function ProfilePage() {
 
   // Handle city selection
   const handleCitySelect = async (suggestion) => {
-    setCityQuery(suggestion.displayName);
-    setSelectedCity(suggestion);
+    // Set flag to prevent search from running
+    isSelectingRef.current = true;
+    
+    // Close suggestions immediately
     setShowSuggestions(false);
+    setSelectedCity(suggestion);
+
+    // Update city query with the suggestion's display name (preserve what user saw)
+    // This is what the user selected, so we should keep it
+    const selectedDisplayName = suggestion.displayName;
+    setCityQuery(selectedDisplayName);
 
     // Fetch full place details to get coordinates
     try {
       setLoading(true);
       const details = await getPlaceDetails(suggestion.placeId, sessionToken);
-      setSelectedCity(details);
+      
+      // Merge details but preserve the original display name from suggestion
+      // The suggestion's displayName is what the user saw and selected
+      setSelectedCity({
+        ...details,
+        displayName: selectedDisplayName, // Keep the original display name user saw
+      });
+      
+      // Don't update cityQuery - keep what user selected
     } catch (err) {
       console.error('Error fetching place details:', err);
       // Continue with basic suggestion data if details fail
+      // Keep the original display name
     } finally {
       setLoading(false);
+      // Clear the flag after a short delay to allow normal typing again
+      setTimeout(() => {
+        isSelectingRef.current = false;
+      }, 500);
     }
   };
 
@@ -233,11 +280,23 @@ export default function ProfilePage() {
                 type="text"
                 value={cityQuery}
                 onChange={(e) => {
+                  // Clear selecting flag when user manually types
+                  isSelectingRef.current = false;
                   setCityQuery(e.target.value);
-                  setSelectedCity(null);
+                  // Clear selected city when user types (unless it matches)
+                  if (selectedCity) {
+                    const selectedDisplayName = selectedCity.displayName || 
+                      (selectedCity.city && selectedCity.country 
+                        ? `${selectedCity.city}, ${selectedCity.country}`
+                        : selectedCity.city);
+                    if (e.target.value.trim() !== selectedDisplayName) {
+                      setSelectedCity(null);
+                    }
+                  }
                 }}
                 onFocus={() => {
-                  if (suggestions.length > 0) {
+                  // Only show suggestions if we have them, no city is selected, and we're not selecting
+                  if (suggestions.length > 0 && !selectedCity && !isSelectingRef.current) {
                     setShowSuggestions(true);
                   }
                 }}
@@ -272,6 +331,11 @@ export default function ProfilePage() {
                 ))}
               </div>
             )}
+
+            {/* Privacy notice */}
+            <p className="mt-2 text-xs text-gray-500 leading-relaxed">
+              We use your location to show you groups and events near you. We only store your city or town, not your precise address.
+            </p>
           </div>
 
           {message && (
