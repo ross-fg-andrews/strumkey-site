@@ -693,40 +693,9 @@ export default function SongbookEditor() {
     return sorted;
   }, [allSongbookSongs]);
 
-  const handleBack = () => {
-    // Try to go back in browser history, fallback to songbooks list
-    if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate('/songbooks');
-    }
-  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
-      <div className="flex items-center gap-4 mb-4">
-        <button
-          onClick={handleBack}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
-          aria-label="Go back"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 19l-7-7 7-7"
-            />
-          </svg>
-          <span>Back</span>
-        </button>
-      </div>
       <h1 className="heading-alice">Create New Songbook</h1>
 
       {error && (

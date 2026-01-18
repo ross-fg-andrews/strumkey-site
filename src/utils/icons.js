@@ -21,6 +21,10 @@ import {
   ShieldCheck,
   MicrophoneStage,
   DiceFour,
+  ArrowLineRight,
+  ArrowLineLeft,
+  ArrowLineUp,
+  ArrowLineDown,
 } from '@phosphor-icons/react';
 
 // Export with app's naming convention for consistency
@@ -36,6 +40,10 @@ export const LogOutIcon = SignOut;
 export const AdminIcon = ShieldCheck;
 export const MicrophoneStageIcon = MicrophoneStage;
 export const ChordIcon = DiceFour;
+export const ArrowLineRightIcon = ArrowLineRight;
+export const ArrowLineLeftIcon = ArrowLineLeft;
+export const ArrowLineUpIcon = ArrowLineUp;
+export const ArrowLineDownIcon = ArrowLineDown;
 
 // Re-export commonly used Phosphor icon props/types for convenience
 export { IconContext } from '@phosphor-icons/react';
