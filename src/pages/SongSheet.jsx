@@ -1149,7 +1149,7 @@ export default function SongSheet() {
                 return (
                   <div key={i} className="leading-relaxed">
                     {chordSegments && chordSegments.length > 0 && (
-                      <p className="mb-1 whitespace-pre text-lg font-mono">
+                      <p className="mb-1 whitespace-pre text-base font-mono">
                         {chordSegments.map((segment, idx) => {
                           if (segment.type === 'space') {
                             return <span key={idx}>{segment.content}</span>;
@@ -1162,7 +1162,8 @@ export default function SongSheet() {
                             return (
                               <span
                                 key={idx}
-                                className="inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium -mx-2"
+                                className="inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-base font-medium -mx-2"
+                                style={segment.isWithinWord ? { transform: 'translateX(-2px)' } : undefined}
                               >
                                 <span>{formatChordNameForDisplay(chordName)}</span>
                                 {chordPosition > 1 && (

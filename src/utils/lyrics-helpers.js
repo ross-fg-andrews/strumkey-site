@@ -167,33 +167,80 @@ export function renderAboveChords(lyrics, chords = []) {
     const positionMap = new Map(); // Maps old position to new position after space collapsing
     let newPos = 0;
     let inSpaceRun = false;
+    let spaceRunNewPos = -1; // Track the newPos of the first space in the run
+    
+    // Debug: log original line if it has double spaces
+    const hasDoubleSpaces = /  /.test(trimmedLine);
+    if (hasDoubleSpaces) {
+      console.log('[SpaceCollapse] Original trimmed line:', JSON.stringify(trimmedLine));
+      console.log('[SpaceCollapse] Chords before collapse:', adjustedChords.map(c => ({ pos: c.position, chord: c.chord })));
+    }
     
     for (let oldPos = 0; oldPos < trimmedLine.length; oldPos++) {
       const char = trimmedLine[oldPos];
-      if (char === ' ') {
+      const charCode = trimmedLine.charCodeAt(oldPos);
+      // Check for all types of whitespace: regular space, tab, non-breaking space, etc.
+      const isSpace = char === ' ' || char === '\t' || charCode === 160 || 
+                      (charCode >= 8192 && charCode <= 8202);
+      
+      if (isSpace) {
         if (!inSpaceRun) {
           // First space in a run - keep it and map position
           collapsedLyricLine += ' ';
+          spaceRunNewPos = newPos;
           positionMap.set(oldPos, newPos);
           newPos++;
           inSpaceRun = true;
         } else {
-          // Subsequent space in a run - skip it, map to same position as first space
-          positionMap.set(oldPos, newPos - 1);
+          // Subsequent space in a run - skip it (don't add to collapsedLyricLine), map to same position as first space
+          positionMap.set(oldPos, spaceRunNewPos);
+          // DO NOT increment newPos - we're skipping this space
         }
       } else {
-        inSpaceRun = false;
+        // End of space run
+        if (inSpaceRun) {
+          inSpaceRun = false;
+          spaceRunNewPos = -1;
+        }
         collapsedLyricLine += char;
         positionMap.set(oldPos, newPos);
         newPos++;
       }
     }
     
+    // Handle case where line ends with spaces - make sure we reset the space run flag
+    if (inSpaceRun) {
+      inSpaceRun = false;
+      spaceRunNewPos = -1;
+    }
+    
+    // Debug: log collapsed line if we had double spaces
+    if (hasDoubleSpaces) {
+      console.log('[SpaceCollapse] Collapsed line:', JSON.stringify(collapsedLyricLine));
+      console.log('[SpaceCollapse] Position map sample:', Array.from(positionMap.entries()).slice(0, 20));
+      // Verify spaces were actually collapsed
+      const stillHasDoubleSpaces = /  /.test(collapsedLyricLine);
+      if (stillHasDoubleSpaces) {
+        console.error('[SpaceCollapse] ERROR: Collapsed line still has double spaces!', JSON.stringify(collapsedLyricLine));
+      }
+    }
+    
     // Adjust chord positions based on space collapsing
+    // The position mapping should already correctly map positions to the collapsed line
     const adjustedChordsForCollapsed = adjustedChords.map(({ position, chord, id }) => {
-      const newPosition = positionMap.get(position) ?? position;
-      return { position: newPosition, chord, id };
+      // Map the position from the original trimmed line to the collapsed line
+      const newPosition = positionMap.get(position);
+      // If position wasn't in map (shouldn't happen, but be safe), use the original position
+      const mappedPosition = newPosition !== undefined ? newPosition : position;
+      return { position: mappedPosition, chord, id };
     });
+
+    // Use the positions directly after space collapsing - they should already be correct
+    // The position represents where the chord marker was, which after space collapsing
+    // correctly points to either:
+    // - A space (for chords between words) - chord appears above the space
+    // - A character (for chords within words) - chord appears above/at that character position
+    const finalAdjustedChords = adjustedChordsForCollapsed;
 
     // Build the chord line by placing each chord at its exact position
     // The position represents where the chord was inserted in the lyrics
@@ -202,11 +249,23 @@ export function renderAboveChords(lyrics, chords = []) {
     // Make sure we have enough space for chords that might extend beyond the line
     const maxLength = Math.max(
       lineLength,
-      ...adjustedChordsForCollapsed.map(({ position, chord }) => (position || 0) + (chord?.length || 0))
+      ...finalAdjustedChords.map(({ position, chord }) => (position || 0) + (chord?.length || 0))
     );
     const chordLineArray = new Array(maxLength).fill(' ');
     
-    adjustedChordsForCollapsed.forEach(({ position, chord }) => {
+    // Debug: log the collapsed line and positions
+    if (collapsedLyricLine.includes('Middle') || collapsedLyricLine.includes('middle')) {
+      console.log('[ChordDebug] Collapsed line:', JSON.stringify(collapsedLyricLine));
+      console.log('[ChordDebug] Line length:', collapsedLyricLine.length);
+      finalAdjustedChords.forEach(({ position, chord }) => {
+        console.log(`[ChordDebug] Chord "${chord}" at position ${position}, char at pos: "${collapsedLyricLine[position] || 'out of bounds'}"`);
+        console.log(`[ChordDebug] Context around position ${position}:`, JSON.stringify(
+          collapsedLyricLine.substring(Math.max(0, position - 5), Math.min(collapsedLyricLine.length, position + 5))
+        ));
+      });
+    }
+    
+    finalAdjustedChords.forEach(({ position, chord }) => {
       // Validate position and chord
       if (position === undefined || position === null || isNaN(position) || !chord || chord.length === 0) {
         return;
@@ -225,6 +284,12 @@ export function renderAboveChords(lyrics, chords = []) {
         }
       }
     });
+    
+    // Debug: log the chord line array
+    if (collapsedLyricLine.includes('Middle') || collapsedLyricLine.includes('middle')) {
+      console.log('[ChordDebug] Chord line array:', JSON.stringify(chordLineArray.join('')));
+      console.log('[ChordDebug] First 20 chars of chord line:', JSON.stringify(chordLineArray.slice(0, 20).join('')));
+    }
 
     // Ensure both lines are the same length for proper alignment
     const lyricLinePadded = collapsedLyricLine.padEnd(maxLength, ' ');
@@ -257,7 +322,19 @@ export function renderAboveChords(lyrics, chords = []) {
           if (currentSegment) {
             chordSegments.push(currentSegment);
           }
-          currentSegment = { type: 'chord', content: char, startPos: i };
+          // Check if this chord is within a word by checking the character at startPos in the lyric line
+          const charAtPos = i < lyricLinePadded.length ? lyricLinePadded[i] : ' ';
+          const charCode = i < lyricLinePadded.length ? lyricLinePadded.charCodeAt(i) : 32;
+          const isWhitespace = charCode === 32 || charCode === 9 || charCode === 160 || 
+                              (charCode >= 8192 && charCode <= 8202);
+          const isWithinWord = !isWhitespace;
+          
+          currentSegment = { 
+            type: 'chord', 
+            content: char, 
+            startPos: i,
+            isWithinWord: isWithinWord 
+          };
         }
       }
     }
