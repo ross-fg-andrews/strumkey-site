@@ -15,12 +15,17 @@ import {
   LogOutIcon,
   AdminIcon,
   ChordIcon,
+  ArrowLineRightIcon,
+  ArrowLineLeftIcon,
+  ArrowLineUpIcon,
+  ArrowLineDownIcon,
 } from '../utils/icons';
 import SongBrowser from './SongBrowser';
 
 export default function Navigation() {
   const [isOpen, setIsOpen] = useState(false);
   const [showSongBrowser, setShowSongBrowser] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const { user: authUser, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -54,6 +59,20 @@ export default function Navigation() {
   
   // Get song actions context (only available when viewing a song)
   const songActions = useSongActions();
+
+  // Track mobile state (reactive to window resize)
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile(); // Initial check
+    window.addEventListener('resize', checkMobile);
+    
+    return () => {
+      window.removeEventListener('resize', checkMobile);
+    };
+  }, []);
   
   // Close menu when clicking outside (for song actions menu)
   useEffect(() => {
@@ -214,6 +233,30 @@ export default function Navigation() {
                 )}
               </div>
             )}
+            {/* Toggle Chords Panel Button */}
+            {isSongPage && songActions && songActions.toggleChordsPanel && songActions.hasChords && (() => {
+              // Determine which icon to show based on panel state and screen size
+              const getToggleIcon = () => {
+                if (isMobile) {
+                  // Mobile: up/down arrows
+                  return songActions.chordsPanelVisible ? ArrowLineUpIcon : ArrowLineDownIcon;
+                } else {
+                  // Desktop: left/right arrows
+                  return songActions.chordsPanelVisible ? ArrowLineRightIcon : ArrowLineLeftIcon;
+                }
+              };
+              const ToggleIcon = getToggleIcon();
+              
+              return (
+                <button
+                  onClick={songActions.toggleChordsPanel}
+                  className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
+                  aria-label={songActions.chordsPanelVisible ? "Hide chords panel" : "Show chords panel"}
+                >
+                  <ToggleIcon className="h-6 w-6 text-gray-700" />
+                </button>
+              );
+            })()}
           </div>
         </div>
       </div>

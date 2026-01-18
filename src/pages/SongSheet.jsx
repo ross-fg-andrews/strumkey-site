@@ -33,6 +33,7 @@ export default function SongSheet() {
   const [shareError, setShareError] = useState(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [chordsPanelVisible, setChordsPanelVisible] = useState(true);
   const menuRef = useRef(null);
   const songSelectorRef = useRef(null);
   
@@ -678,6 +679,9 @@ export default function SongSheet() {
       return null;
     }
     
+    // Check if chords exist (chordDiagrams is computed later, so check uniqueChordPairs)
+    const hasChords = uniqueChordPairs && uniqueChordPairs.length > 0;
+    
     return {
       menuOpen,
       setMenuOpen,
@@ -686,6 +690,9 @@ export default function SongSheet() {
       setChordMode,
       canEdit,
       isCreator,
+      chordsPanelVisible,
+      hasChords,
+      toggleChordsPanel: () => setChordsPanelVisible(prev => !prev),
       handleEditClick: () => {
         // Store current chord mode before entering edit mode
         setPreviousChordMode(chordMode);
@@ -709,7 +716,7 @@ export default function SongSheet() {
         setMenuOpen(false);
       },
     };
-  }, [isViewMode, isEditing, menuOpen, chordMode, canEdit, isCreator, song, setChordMode, setMenuOpen]);
+  }, [isViewMode, isEditing, menuOpen, chordMode, canEdit, isCreator, song, chordsPanelVisible, uniqueChordPairs, setChordMode, setMenuOpen]);
 
   // Register/unregister song actions when value changes
   useEffect(() => {
@@ -1180,8 +1187,12 @@ export default function SongSheet() {
         {/* Chord Charts Section */}
         {chordDiagrams.length > 0 ? (
           <div 
-            className="mb-6 md:mb-0 md:flex-shrink-0 order-1 md:order-2"
-            style={optimalChordWidth !== null ? { width: `${optimalChordWidth}px` } : undefined}
+            className={`mb-6 md:mb-0 md:flex-shrink-0 order-1 md:order-2 transition-all duration-300 ease-in-out ${
+              !chordsPanelVisible 
+                ? 'max-h-0 overflow-hidden mb-0 md:max-h-none md:overflow-hidden md:w-0 md:opacity-0 md:pointer-events-none' 
+                : 'max-h-[1000px] md:max-h-none md:translate-x-0 md:opacity-100'
+            }`}
+            style={!chordsPanelVisible ? { width: '0px' } : (optimalChordWidth !== null ? { width: `${optimalChordWidth}px` } : undefined)}
           >
             {/* Desktop: flex wrap layout */}
             <div className="hidden md:flex flex-wrap gap-x-3 gap-y-6 justify-start">
@@ -1198,7 +1209,9 @@ export default function SongSheet() {
               ))}
             </div>
             {/* Mobile: horizontal scrollable line */}
-            <div className="md:hidden flex gap-x-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
+            <div className={`md:hidden flex gap-x-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent transition-opacity duration-200 ${
+              chordsPanelVisible ? 'opacity-100 delay-150' : 'opacity-0 delay-0'
+            }`}>
               {chordDiagrams.map(({ name, frets, baseFret, position, instrument: chordInstrument, tuning: chordTuning }) => (
                 <ChordDiagram 
                   key={`${name}-${position}`}
@@ -1215,10 +1228,16 @@ export default function SongSheet() {
         ) : uniqueChordPairs.length > 0 ? (
           // Show message if chords exist but don't match
           <div 
-            className="mb-6 md:mb-0 md:flex-shrink-0 order-1 md:order-2"
-            style={optimalChordWidth !== null ? { width: `${optimalChordWidth}px` } : undefined}
+            className={`mb-6 md:mb-0 md:flex-shrink-0 order-1 md:order-2 transition-all duration-300 ease-in-out ${
+              !chordsPanelVisible 
+                ? 'max-h-0 overflow-hidden mb-0 md:max-h-none md:overflow-hidden md:w-0 md:opacity-0 md:pointer-events-none' 
+                : 'max-h-[1000px] md:max-h-none md:translate-x-0 md:opacity-100'
+            }`}
+            style={!chordsPanelVisible ? { width: '0px' } : (optimalChordWidth !== null ? { width: `${optimalChordWidth}px` } : undefined)}
           >
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <div className={`bg-gray-50 border border-gray-200 rounded-lg p-4 transition-opacity duration-200 ${
+              chordsPanelVisible ? 'opacity-100 delay-150 md:delay-0' : 'opacity-0 delay-0'
+            }`}>
               <h3 className="text-sm font-semibold mb-2">Chord Charts</h3>
               <p className="text-xs text-gray-600">
                 Some chords in this song don't have diagrams available: {uniqueChordPairs.map(p => p.position > 1 ? `${p.name}:${p.position}` : p.name).join(', ')}
