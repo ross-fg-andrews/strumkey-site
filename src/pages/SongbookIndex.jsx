@@ -260,41 +260,10 @@ export default function SongbookIndex() {
   const canShare = userOwnsSongbook && songbook.type === 'private';
   const userGroups = groupsData?.groupMembers?.map(gm => gm.group).filter(Boolean) || [];
 
-  const handleBack = () => {
-    // Try to go back in browser history, fallback to songbooks list
-    if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate('/songbooks');
-    }
-  };
 
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
-        <div className="flex items-center gap-4 mb-4">
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
-            aria-label="Go back"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-            <span>Back</span>
-          </button>
-        </div>
         <div className="flex items-start justify-between mb-2">
           <div className="flex-1">
             <h1 className="heading-alice mb-2">{songbook.title}</h1>

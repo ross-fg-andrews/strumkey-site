@@ -705,38 +705,6 @@ export default function SongSheet() {
 
     return (
       <div>
-        {/* Back button */}
-        <div className="flex items-center gap-4 mb-4">
-          <button
-            onClick={() => {
-              if (groupId) {
-                navigate(`/groups/${groupId}?tab=songs`);
-              } else if (window.history.length > 1) {
-                navigate(-1);
-              } else {
-                navigate('/songs');
-              }
-            }}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
-            aria-label="Go back"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-            <span>Back</span>
-          </button>
-        </div>
         {/* Save and Cancel buttons above the title */}
         <div className="flex gap-4 mb-6">
           <button
@@ -827,20 +795,6 @@ export default function SongSheet() {
   // Parse elements for styling (only if we're not editing)
   const { headings, instructions } = !isEditing && song.lyrics ? extractElements(song.lyrics) : { headings: [], instructions: [] };
 
-  const handleBack = () => {
-    // If we're in a group context, go back to the group songs tab
-    if (groupId) {
-      navigate(`/groups/${groupId}?tab=songs`);
-      return;
-    }
-    // If we're in a songbook context, go back to the songbook
-    if (songbookId) {
-      navigate(`/songbooks/${songbookId}`);
-      return;
-    }
-    // Fallback: go to songs list
-    navigate('/songs');
-  };
 
   return (
     <div>
@@ -902,29 +856,6 @@ export default function SongSheet() {
       )}
 
       <div className="mb-6">
-        <div className="flex items-center gap-4 mb-4">
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
-            aria-label="Go back"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-            <span>Back</span>
-          </button>
-        </div>
         <div className="flex items-start justify-between mb-2">
           <div className="flex-1 min-w-0">
             {isEditing ? (
