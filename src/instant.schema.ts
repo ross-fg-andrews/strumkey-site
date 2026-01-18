@@ -15,6 +15,11 @@ const _schema = i.schema({
       firstName: i.string().optional(),
       lastName: i.string().optional(),
       isSiteAdmin: i.boolean().optional(),
+      hasCompletedOnboarding: i.boolean().optional(),
+      locationCity: i.string().optional(),
+      locationCountry: i.string().optional(),
+      locationLat: i.number().optional(),
+      locationLng: i.number().optional(),
     }),
     chords: i.entity({
       name: i.string().indexed(),          // Display name: "C", "Cmaj7", "Bm7b5"
