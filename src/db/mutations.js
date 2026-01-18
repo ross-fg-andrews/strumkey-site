@@ -771,7 +771,7 @@ export async function addPrivateSongToGroup(songId, groupId, userId) {
 /**
  * Update user profile information
  * @param {string} userId - User ID
- * @param {Object} updates - Fields to update (firstName, lastName)
+ * @param {Object} updates - Fields to update (firstName, lastName, hasCompletedOnboarding, locationCity, locationCountry, locationLat, locationLng)
  * @returns {Promise} Transaction promise
  */
 export async function updateUser(userId, updates) {
@@ -782,6 +782,25 @@ export async function updateUser(userId, updates) {
   }
   if (updates.lastName !== undefined) {
     updateData.lastName = updates.lastName?.trim() || null;
+  }
+  if (updates.hasCompletedOnboarding !== undefined) {
+    updateData.hasCompletedOnboarding = updates.hasCompletedOnboarding;
+  }
+  if (updates.locationCity !== undefined) {
+    updateData.locationCity = updates.locationCity?.trim() || null;
+  }
+  if (updates.locationCountry !== undefined) {
+    updateData.locationCountry = updates.locationCountry?.trim() || null;
+  }
+  if (updates.locationLat !== undefined) {
+    updateData.locationLat = updates.locationLat !== null && !isNaN(updates.locationLat) 
+      ? Number(updates.locationLat) 
+      : null;
+  }
+  if (updates.locationLng !== undefined) {
+    updateData.locationLng = updates.locationLng !== null && !isNaN(updates.locationLng)
+      ? Number(updates.locationLng)
+      : null;
   }
   
   if (Object.keys(updateData).length === 0) {

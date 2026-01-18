@@ -1,23 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { updateUser } from '../db/mutations';
-import { db } from '../db/schema';
 import { searchCities, getPlaceDetails, createSessionToken } from '../utils/location-autocomplete';
 
-export default function ProfilePage() {
+/**
+ * OnboardingModal Component
+ * Blocking modal that appears on first login, requiring users to complete their profile
+ * before they can access the site.
+ */
+export default function OnboardingModal() {
   const { user: authUser } = useAuth();
-  
-  // Query the full user object to get firstName and lastName
-  const { data: userData } = db.useQuery({
-    $users: {
-      $: {
-        where: authUser?.id ? { id: authUser.id } : { id: '' },
-      },
-    },
-  });
-  
-  const user = userData?.$users?.[0] || authUser;
-  
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [cityQuery, setCityQuery] = useState('');
@@ -26,7 +18,7 @@ export default function ProfilePage() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
   const [sessionToken, setSessionToken] = useState(null);
   
   const cityInputRef = useRef(null);
@@ -38,31 +30,6 @@ export default function ProfilePage() {
   useEffect(() => {
     setSessionToken(createSessionToken());
   }, []);
-
-  // Initialize form fields from user data
-  useEffect(() => {
-    if (user) {
-      console.log('User object:', user);
-      console.log('User firstName:', user.firstName, 'lastName:', user.lastName);
-      setFirstName(user.firstName || '');
-      setLastName(user.lastName || '');
-      
-      // Set city display
-      if (user.locationCity) {
-        const cityDisplay = user.locationCountry 
-          ? `${user.locationCity}, ${user.locationCountry}`
-          : user.locationCity;
-        setCityQuery(cityDisplay);
-        setSelectedCity({
-          city: user.locationCity,
-          country: user.locationCountry || '',
-          countryCode: user.locationCountry || '',
-          lat: user.locationLat,
-          lng: user.locationLng,
-        });
-      }
-    }
-  }, [user]);
 
   // Debounced city search
   useEffect(() => {
@@ -118,6 +85,7 @@ export default function ProfilePage() {
         }
       } catch (err) {
         console.error('Error fetching city suggestions:', err);
+        setError('Unable to load city suggestions. Please try again.');
         setSuggestions([]);
         setShowSuggestions(false);
       } finally {
@@ -140,6 +108,7 @@ export default function ProfilePage() {
     // Close suggestions immediately
     setShowSuggestions(false);
     setSelectedCity(suggestion);
+    setError('');
 
     // Update city query with the suggestion's display name (preserve what user saw)
     // This is what the user selected, so we should keep it
@@ -172,6 +141,56 @@ export default function ProfilePage() {
     }
   };
 
+  // Handle form submission
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    // Validation
+    if (!firstName.trim()) {
+      setError('Please enter your first name.');
+      return;
+    }
+
+    if (!lastName.trim()) {
+      setError('Please enter your last name.');
+      return;
+    }
+
+    if (!selectedCity) {
+      setError('Please select a city from the suggestions.');
+      cityInputRef.current?.focus();
+      return;
+    }
+
+    if (!authUser?.id) {
+      setError('You must be logged in to complete onboarding.');
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      await updateUser(authUser.id, {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        hasCompletedOnboarding: true,
+        locationCity: selectedCity.city,
+        locationCountry: selectedCity.countryCode || selectedCity.country,
+        locationLat: selectedCity.lat,
+        locationLng: selectedCity.lng,
+      });
+
+      // Success - the modal will disappear when user data updates
+      // The Layout component will detect hasCompletedOnboarding = true
+    } catch (err) {
+      console.error('Error saving onboarding data:', err);
+      setError('Error saving your information. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Handle clicks outside suggestions dropdown
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -191,88 +210,66 @@ export default function ProfilePage() {
     };
   }, []);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    setMessage('');
-
-    try {
-      if (!authUser?.id) {
-        setMessage('You must be logged in to update your profile.');
-        setSaving(false);
-        return;
-      }
-
-      const updateData = {
-        firstName: firstName.trim() || null,
-        lastName: lastName.trim() || null,
-      };
-
-      // Include location data if city is selected
-      if (selectedCity) {
-        updateData.locationCity = selectedCity.city;
-        updateData.locationCountry = selectedCity.countryCode || selectedCity.country;
-        updateData.locationLat = selectedCity.lat;
-        updateData.locationLng = selectedCity.lng;
-      }
-
-      console.log('Submitting profile update with:', updateData);
-      await updateUser(authUser.id, updateData);
-
-      console.log('Update completed');
-      setMessage('Profile updated successfully!');
-      // Clear message after 3 seconds
-      setTimeout(() => setMessage(''), 3000);
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      setMessage('Error updating profile. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
+  // Prevent closing modal (no close button, no backdrop click)
+  // This is intentional - users must complete onboarding
 
   return (
-    <div className="space-y-8">
-      <h1 className="heading-alice">Profile</h1>
-      
-      <div className="card max-w-2xl">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div 
+        className="bg-white rounded-lg p-6 max-w-lg w-full shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            Welcome to Strumkey!
+          </h2>
+          <p className="text-gray-600">
+            Let's get you set up. Please provide a few details to complete your profile.
+          </p>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* First Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email
-            </label>
-            <p className="text-gray-900">{user?.email || 'Not provided'}</p>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              First Name
+              First Name <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              className="input"
+              onChange={(e) => {
+                setFirstName(e.target.value);
+                setError('');
+              }}
+              className="input w-full"
               placeholder="Enter your first name"
+              required
+              autoFocus
             />
           </div>
-          
+
+          {/* Last Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Last Name
+              Last Name <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              className="input"
+              onChange={(e) => {
+                setLastName(e.target.value);
+                setError('');
+              }}
+              className="input w-full"
               placeholder="Enter your last name"
+              required
             />
           </div>
 
+          {/* City/Town */}
           <div className="relative">
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              City or Town
+              City or Town <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <input
@@ -293,6 +290,7 @@ export default function ProfilePage() {
                       setSelectedCity(null);
                     }
                   }
+                  setError('');
                 }}
                 onFocus={() => {
                   // Only show suggestions if we have them, no city is selected, and we're not selecting
@@ -302,6 +300,7 @@ export default function ProfilePage() {
                 }}
                 className="input w-full"
                 placeholder="Start typing your city or town..."
+                required
               />
               {loading && (
                 <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
@@ -332,25 +331,33 @@ export default function ProfilePage() {
               </div>
             )}
 
+            {showSuggestions && suggestions.length === 0 && cityQuery.length >= 2 && !loading && (
+              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg p-4 text-sm text-gray-500">
+                No cities found. Please try a different search term.
+              </div>
+            )}
+            
             {/* Privacy notice */}
             <p className="mt-2 text-xs text-gray-500 leading-relaxed">
               We use your location to show you groups and events near you. We only store your city or town, not your precise address.
             </p>
           </div>
 
-          {message && (
-            <p className={`text-sm ${message.includes('Error') ? 'text-red-600' : 'text-green-600'}`}>
-              {message}
-            </p>
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-md p-3">
+              <p className="text-sm text-red-600">{error}</p>
+            </div>
           )}
 
-          <div className="pt-2">
+          {/* Submit Button */}
+          <div className="pt-4">
             <button
               type="submit"
               disabled={saving || loading}
-              className="btn btn-primary"
+              className="btn btn-primary w-full"
             >
-              {saving ? 'Saving...' : 'Save Changes'}
+              {saving ? 'Saving...' : 'Complete Setup'}
             </button>
           </div>
         </form>
@@ -358,6 +365,3 @@ export default function ProfilePage() {
     </div>
   );
 }
-
-
-
