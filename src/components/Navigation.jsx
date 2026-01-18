@@ -101,19 +101,29 @@ export default function Navigation() {
 
   return (
     <>
-      {/* Menu Button */}
-      <button
-        onClick={handleOpenNavigation}
-        className="fixed top-4 left-4 z-40 p-2 rounded-lg hover:bg-gray-200 transition-colors"
-        aria-label="Open navigation"
-      >
-        <MenuIcon className="h-6 w-6 text-gray-700" />
-      </button>
+      {/* Sticky Top Menu Bar */}
+      <div className="sticky top-0 z-40 bg-gray-50">
+        <div className="flex items-center justify-between px-4 h-14">
+          {/* Left: Menu Button */}
+          <button
+            onClick={handleOpenNavigation}
+            className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
+            aria-label="Open navigation"
+          >
+            <MenuIcon className="h-6 w-6 text-gray-700" />
+          </button>
+          
+          {/* Right: Reserved for contextual buttons */}
+          <div className="flex items-center gap-2">
+            {/* Future contextual buttons will go here */}
+          </div>
+        </div>
+      </div>
 
       {/* Backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-20 z-40 transition-opacity"
+          className="fixed inset-0 bg-black bg-opacity-20 z-[45] transition-opacity"
           onClick={handleCloseNavigation}
         />
       )}

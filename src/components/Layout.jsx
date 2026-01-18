@@ -28,7 +28,7 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation />
-      <main className="w-full px-4 pb-8 pt-16 xl:container xl:mx-auto xl:pt-8 lg:pl-16">
+      <main className="w-full px-4 pb-8 pt-4 xl:container xl:mx-auto">
         <Outlet />
       </main>
     </div>
