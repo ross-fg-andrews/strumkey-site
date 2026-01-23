@@ -1,7 +1,8 @@
 import { useRef, useEffect, useState } from 'react';
 import { findChord } from '../utils/chord-library';
 import { useChordAutocomplete } from '../hooks/useChordAutocomplete';
-import ChordAutocompleteDropdown from './ChordAutocompleteDropdown';
+import ChordInsertionModal from './ChordInsertionModal';
+import ChordInsertionFAB from './ChordInsertionFAB';
 import CustomChordModal from './CustomChordModal';
 import ChordVariationsModal from './ChordVariationsModal';
 import { createPersonalChord } from '../db/mutations';
@@ -18,9 +19,10 @@ export default function ChordAutocomplete({
   userId = null
 }) {
   const textareaRef = useRef(null);
-  const dropdownRef = useRef(null);
+  const modalRef = useRef(null);
+  const searchInputRef = useRef(null);
   const insertPositionRef = useRef(0);
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
+  const [isFocused, setIsFocused] = useState(false);
 
   // Use shared autocomplete hook
   const {
@@ -47,318 +49,113 @@ export default function ChordAutocomplete({
     handleChordPositionSelect,
   } = useChordAutocomplete({ value, instrument, tuning, userId });
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target) &&
-        textareaRef.current &&
-        !textareaRef.current.contains(event.target)
-      ) {
-        setShowDropdown(false);
-        setQuery('');
-      }
-    }
-
-    if (showDropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [showDropdown, setShowDropdown, setQuery]);
-
-  /**
-   * Calculate cursor position in pixels
-   * Returns { top, left } coordinates in viewport coordinates
-   */
-  const calculateCursorPosition = (cursorPos) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return { top: 0, left: 0 };
-
-    const text = value || '';
-    const textBeforeCursor = text.substring(0, cursorPos);
-    
-    // Get textarea position and styles
-    const textareaRect = textarea.getBoundingClientRect();
-    const textareaStyles = window.getComputedStyle(textarea);
-    const lineHeight = parseFloat(textareaStyles.lineHeight) || parseFloat(textareaStyles.fontSize) * 1.2;
-    const paddingTop = parseFloat(textareaStyles.paddingTop) || 0;
-    const paddingLeft = parseFloat(textareaStyles.paddingLeft) || 0;
-    const borderTop = parseFloat(textareaStyles.borderTopWidth) || 0;
-    const borderLeft = parseFloat(textareaStyles.borderLeftWidth) || 0;
-    const scrollTop = textarea.scrollTop;
-
-    // Split text into lines to find which line the cursor is on
-    const lines = textBeforeCursor.split('\n');
-    const currentLineIndex = lines.length - 1;
-    const currentLineText = lines[currentLineIndex];
-
-    // Calculate vertical position
-    const lineTop = paddingTop + borderTop + (currentLineIndex * lineHeight);
-    const top = textareaRect.top + lineTop - scrollTop;
-
-    // Calculate horizontal position using canvas for text measurement
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    context.font = `${textareaStyles.fontSize} ${textareaStyles.fontFamily}`;
-    
-    // Measure text width on current line
-    const textWidth = context.measureText(currentLineText).width;
-    
-    // Calculate content width
-    const contentWidth = textarea.offsetWidth - paddingLeft - parseFloat(textareaStyles.paddingRight || 0) - borderLeft - parseFloat(textareaStyles.borderRightWidth || 0);
-    
-    // Calculate horizontal position, accounting for word wrapping
-    let left = textareaRect.left + paddingLeft + borderLeft;
-    if (textWidth > contentWidth && contentWidth > 0) {
-      // Text wraps - use modulo to find position on wrapped line
-      left += textWidth % contentWidth;
-    } else {
-      left += textWidth;
-    }
-
-    return { top, left };
+  // Handle focus/blur for FAB visibility
+  const handleFocus = () => {
+    setIsFocused(true);
   };
 
-  // Update dropdown position when it opens or cursor changes
-  useEffect(() => {
-    if (!showDropdown || !textareaRef.current) return;
-    
-    const textarea = textareaRef.current;
-    const textareaRect = textarea.getBoundingClientRect();
-    
-    const position = calculateCursorPosition(insertPositionRef.current);
-    // position is already in viewport coordinates
-    let absoluteTop = position.top;
-    let absoluteLeft = position.left;
-    
-    // Validate positions - if invalid, use textarea position as fallback
-    if (isNaN(absoluteTop) || isNaN(absoluteLeft) || absoluteTop < 0 || absoluteLeft < 0) {
-      absoluteTop = textareaRect.top;
-      absoluteLeft = textareaRect.left;
-    }
-    
-    // Check if dropdown would overflow viewport
-    const dropdownHeight = 450; // max-h-[450px] = 450px
-    const dropdownWidth = 280; // min-w-[280px] to accommodate chord diagrams
-    const viewportHeight = window.innerHeight;
-    const viewportWidth = window.innerWidth;
-    
-    let finalTop = absoluteTop;
-    let finalLeft = absoluteLeft;
-    let positionAbove = false;
+  const handleBlur = () => {
+    // Delay to check if focus moved to modal
+    setTimeout(() => {
+      if (document.activeElement !== searchInputRef.current && 
+          !modalRef.current?.contains(document.activeElement)) {
+        setIsFocused(false);
+      }
+    }, 100);
+  };
 
-    // Add some spacing below cursor (approximate line height)
-    const lineHeight = parseFloat(window.getComputedStyle(textarea).lineHeight) || 20;
+  // Handle FAB mousedown to capture cursor position before blur
+  const handleFABMouseDown = (e) => {
+    // Prevent default to avoid immediate focus change
+    e.preventDefault();
+    const textarea = textareaRef.current;
+    if (textarea) {
+      // CRITICAL: Capture cursor position BEFORE any focus changes
+      // Use mousedown instead of click to capture position before blur
+      const cursorStart = textarea.selectionStart;
+      const cursorEnd = textarea.selectionEnd;
+      const cursorPos = Math.min(cursorStart, cursorEnd);
+      
+      // Store immediately - this must happen synchronously before any async operations
+      insertPositionRef.current = cursorPos;
+      
+      // Debug logging
+      const text = textarea.value || '';
+      console.log('[ChordAutocomplete] FAB clicked - captured position:', cursorPos, 'text length:', text.length,
+        'text around pos:', JSON.stringify(text.substring(Math.max(0, cursorPos - 3), Math.min(text.length, cursorPos + 3))));
+      
+      // Now open the modal
+      setQuery('');
+      setSelectedIndex(0);
+      setShowDropdown(true);
+    }
+  };
+
+  // Handle modal close
+  const handleModalClose = () => {
+    setShowDropdown(false);
+    setQuery('');
+    // Restore focus to textarea
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 0);
+  };
+
+  // Handle insert action from modal
+  const handleModalInsert = () => {
+    const showMoreIndex = filteredElements.length + usedFiltered.length + libraryFiltered.length;
+    const createCustomIndex = showMoreIndex + 1;
     
-    // If dropdown would overflow bottom, position above cursor
-    if (absoluteTop + lineHeight + dropdownHeight > viewportHeight && absoluteTop > dropdownHeight) {
-      finalTop = absoluteTop - dropdownHeight;
-      positionAbove = true;
+    // Check if "Show more variations" is selected
+    if (selectedIndex === showMoreIndex) {
+      setShowVariationsModal(true);
+      setShowDropdown(false);
+    } else if (selectedIndex === createCustomIndex) {
+      // "Create custom chord" is selected
+      setShowCustomChordModal(true);
+      setShowDropdown(false);
+    } else if (selectedIndex < filteredElements.length) {
+      // Element selected
+      const element = filteredElements[selectedIndex];
+      insertElement(element.type);
     } else {
-      // Position below cursor with line height spacing
-      finalTop = absoluteTop + lineHeight;
-    }
-
-    // If dropdown would overflow right, align to left
-    if (absoluteLeft + dropdownWidth > viewportWidth) {
-      finalLeft = Math.max(10, viewportWidth - dropdownWidth - 10); // 10px margin
-    }
-
-    // Ensure dropdown doesn't go off left edge
-    if (finalLeft < 10) {
-      finalLeft = 10;
-    }
-    
-    // Final validation
-    if (isNaN(finalTop) || isNaN(finalLeft)) {
-      finalTop = textareaRect.top + 20;
-      finalLeft = textareaRect.left;
-    }
-
-    setDropdownPosition({
-      top: finalTop,
-      left: finalLeft,
-      positionAbove,
-    });
-  }, [showDropdown, value]);
-
-  // Update position on scroll and resize
-  useEffect(() => {
-    if (!showDropdown) return;
-
-    const handleUpdate = () => {
-      if (!textareaRef.current) return;
-      
-      const position = calculateCursorPosition(insertPositionRef.current);
-      // position is already in viewport coordinates
-      const absoluteTop = position.top;
-      const absoluteLeft = position.left;
-      
-      const dropdownHeight = 450;
-      const dropdownWidth = 280;
-      const viewportHeight = window.innerHeight;
-      const viewportWidth = window.innerWidth;
-      
-      let finalTop = absoluteTop;
-      let finalLeft = absoluteLeft;
-      
-      const lineHeight = parseFloat(window.getComputedStyle(textareaRef.current).lineHeight) || 20;
-      
-      if (absoluteTop + lineHeight + dropdownHeight > viewportHeight && absoluteTop > dropdownHeight) {
-        finalTop = absoluteTop - dropdownHeight;
-      } else {
-        finalTop = absoluteTop + lineHeight;
-      }
-
-      if (absoluteLeft + dropdownWidth > viewportWidth) {
-        finalLeft = Math.max(10, viewportWidth - dropdownWidth - 10);
-      }
-
-      if (finalLeft < 10) {
-        finalLeft = 10;
-      }
-
-      setDropdownPosition({
-        top: finalTop,
-        left: finalLeft,
-        positionAbove: finalTop < absoluteTop,
-      });
-    };
-
-    window.addEventListener('scroll', handleUpdate, true);
-    window.addEventListener('resize', handleUpdate);
-    const textarea = textareaRef.current;
-    textarea?.addEventListener('scroll', handleUpdate);
-
-    return () => {
-      window.removeEventListener('scroll', handleUpdate, true);
-      window.removeEventListener('resize', handleUpdate);
-      textarea?.removeEventListener('scroll', handleUpdate);
-    };
-  }, [showDropdown, value]);
-
-  const getDropdownStyle = () => {
-    if (!showDropdown) return {};
-    
-    // Ensure we have valid positions, fallback to textarea position if not
-    const textarea = textareaRef.current;
-    let top = dropdownPosition.top;
-    let left = dropdownPosition.left;
-    
-    if (!textarea || isNaN(top) || isNaN(left) || top < 0 || left < 0) {
-      const textareaRect = textarea?.getBoundingClientRect();
-      if (textareaRect) {
-        top = textareaRect.top + 20;
-        left = textareaRect.left;
-      } else {
-        top = 100;
-        left = 100;
+      // Chord selected
+      const chordIndex = selectedIndex - filteredElements.length;
+      const allFiltered = [...usedFiltered, ...libraryFiltered];
+      if (allFiltered[chordIndex]) {
+        const selectedChord = allFiltered[chordIndex];
+        const chordName = selectedChord.name || selectedChord;
+        const chordPosition = selectedChord.position;
+        if (chordPosition) {
+          handleChordPositionSelect(chordName, chordPosition);
+        }
+        insertChord(chordName);
       }
     }
-    
-    return {
-      position: 'fixed', // Use fixed to position relative to viewport
-      top: `${top}px`,
-      left: `${left}px`,
-      zIndex: 1000,
-      maxWidth: '350px',
-      minWidth: '280px',
-    };
   };
 
   const handleKeyDown = (e) => {
     if (showDropdown) {
-      // +1 for "Show more variations", +1 for "Create custom chord"
-      const totalItems = filteredElements.length + usedFiltered.length + libraryFiltered.length + 2;
-      
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedIndex(prev => 
-          prev < totalItems - 1 ? prev + 1 : prev
-        );
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedIndex(prev => prev > 0 ? prev - 1 : 0);
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        const showMoreIndex = filteredElements.length + usedFiltered.length + libraryFiltered.length;
-        const createCustomIndex = showMoreIndex + 1;
-        // Check if "Show more variations" is selected
-        if (selectedIndex === showMoreIndex) {
-          setShowVariationsModal(true);
-          setShowDropdown(false);
-        } else if (selectedIndex === createCustomIndex) {
-          // "Create custom chord" is selected
-          setShowCustomChordModal(true);
-          setShowDropdown(false);
-        } else if (selectedIndex < filteredElements.length) {
-          // Element selected
-          const element = filteredElements[selectedIndex];
-          insertElement(element.type);
-        } else {
-          // Chord selected
-          const chordIndex = selectedIndex - filteredElements.length;
-          const allFiltered = [...usedFiltered, ...libraryFiltered];
-          if (allFiltered[chordIndex]) {
-            const selectedChord = allFiltered[chordIndex];
-            const chordName = selectedChord.name || selectedChord;
-            const chordPosition = selectedChord.position;
-            if (chordPosition) {
-              handleChordPositionSelect(chordName, chordPosition);
-            }
-            insertChord(chordName);
-          }
-        }
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        setShowDropdown(false);
-        setQuery('');
-        textareaRef.current?.focus();
-      } else if (e.key === 'Backspace') {
-        if (query.length > 0) {
-          e.preventDefault();
-          setQuery(prev => prev.slice(0, -1));
-        } else {
-          // Close dropdown if query is empty
-          setShowDropdown(false);
-          setQuery('');
-        }
-      } else if (e.key === ' ' || e.key === 'Enter' || e.key === 'Tab') {
-        // Space, Enter (when not selecting), or Tab should close dropdown
-        // Enter is already handled above for selection, so this won't fire
-        setShowDropdown(false);
-        setQuery('');
-      } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && /[a-zA-Z0-9#]/.test(e.key)) {
-        // User is typing alphanumeric or chord-related characters (# for sharp, b for flat) to filter
-        // Prevent default and update query
-        e.preventDefault();
-        setQuery(prev => prev + e.key);
-      }
+      // Modal is open - keyboard navigation is handled by the modal component
+      // We don't need to handle anything here
     } else if (e.key === '/') {
       e.preventDefault();
       const textarea = textareaRef.current;
       if (textarea) {
         // CRITICAL: Read cursor position IMMEDIATELY, before any state updates or focus changes
-        // Use selectionStart which should be accurate even on empty lines
-        // On empty lines, selectionStart should be the position after the previous newline
         const cursorStart = textarea.selectionStart;
         const cursorEnd = textarea.selectionEnd;
-        // Use the start position (cursor position, not end of selection)
         const cursorPos = Math.min(cursorStart, cursorEnd);
         
-        // Store immediately - this must happen synchronously, before any React state updates
+        // Store immediately - this must happen synchronously
         insertPositionRef.current = cursorPos;
         
-        // Debug: log the position and text around it to help diagnose
-        const text = value || '';
-        const before = text.substring(Math.max(0, cursorPos - 10), cursorPos);
-        const after = text.substring(cursorPos, Math.min(text.length, cursorPos + 10));
-        console.log('[ChordAutocomplete] / pressed - cursorPos:', cursorPos, 'text.length:', text.length, 
-          'selectionStart:', cursorStart, 'selectionEnd:', cursorEnd,
-          'before:', JSON.stringify(before), 'after:', JSON.stringify(after));
+        // Debug logging
+        const text = textarea.value || '';
+        console.log('[ChordAutocomplete] / pressed - captured position:', cursorPos, 'text length:', text.length,
+          'text around pos:', JSON.stringify(text.substring(Math.max(0, cursorPos - 3), Math.min(text.length, cursorPos + 3))));
         
-        // Now update UI state (this is async but position is already captured in ref)
+        // Now update UI state
         setQuery('');
         setSelectedIndex(0);
         setShowDropdown(true);
@@ -369,21 +166,8 @@ export default function ChordAutocomplete({
   const handleChange = (e) => {
     onChange(e);
     
-    // If dropdown is open, check if cursor has moved away from insert position
-    if (showDropdown) {
-      const textarea = textareaRef.current;
-      if (textarea) {
-        const cursorPos = textarea.selectionStart;
-        // If cursor moved significantly away from insert position, close dropdown
-        // Allow some movement for the query text (but we're not inserting query text)
-        // Actually, since we prevent default on typing when dropdown is open,
-        // the cursor shouldn't move. But if user clicks elsewhere, it will.
-        if (cursorPos < insertPositionRef.current) {
-          setShowDropdown(false);
-          setQuery('');
-        }
-      }
-    }
+    // Note: For modal, we don't need to check cursor movement
+    // The modal stays open until user explicitly closes it or inserts
   };
 
   const insertChord = (chordName, explicitPosition = null) => {
@@ -393,10 +177,26 @@ export default function ChordAutocomplete({
     // Use current textarea value instead of potentially stale prop value
     // This ensures we're using the actual current text when inserting, matching the cursor position that was captured
     const text = textarea.value || '';
-    const insertPos = insertPositionRef.current;
+    let insertPos = insertPositionRef.current;
+    
+    // CRITICAL FIX: Always prefer current cursor position if textarea has focus
+    // The stored position might be stale or incorrect, especially if text changed
+    if (document.activeElement === textarea) {
+      const currentPos = textarea.selectionStart;
+      // Use current position if it's different from stored (stored might be wrong)
+      // Only trust stored position if current position is at 0 (might be after modal opened)
+      if (currentPos > 0 || insertPos === 0) {
+        console.log('[ChordAutocomplete] insertChord - using current cursor position. stored:', insertPos, 'current:', currentPos);
+        insertPos = currentPos;
+      }
+    }
     
     // Clamp to valid range
     const validPos = Math.max(0, Math.min(insertPos, text.length));
+    
+    // Debug logging
+    console.log('[ChordAutocomplete] insertChord - final position:', validPos, 'text length:', text.length, 
+      'text around pos:', JSON.stringify(text.substring(Math.max(0, validPos - 3), Math.min(text.length, validPos + 3))));
     
     const before = text.substring(0, validPos);
     const after = text.substring(validPos);
@@ -580,17 +380,27 @@ export default function ChordAutocomplete({
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
         placeholder={placeholder}
         className={className}
         rows={rows}
         required={required}
       />
       
-      <ChordAutocompleteDropdown
+      {/* Floating Action Button */}
+      <ChordInsertionFAB
+        onMouseDown={handleFABMouseDown}
+        visible={isFocused && !showDropdown}
+      />
+      
+      {/* Chord Insertion Modal */}
+      <ChordInsertionModal
         isOpen={showDropdown}
-        position={getDropdownStyle()}
         query={query}
+        setQuery={setQuery}
         selectedIndex={selectedIndex}
+        setSelectedIndex={setSelectedIndex}
         filteredElements={filteredElements}
         usedFiltered={usedFiltered}
         libraryFiltered={libraryFiltered}
@@ -607,7 +417,10 @@ export default function ChordAutocomplete({
           setShowCustomChordModal(true);
           setShowDropdown(false);
         }}
-        dropdownRef={dropdownRef}
+        onClose={handleModalClose}
+        onInsert={handleModalInsert}
+        modalRef={modalRef}
+        searchInputRef={searchInputRef}
       />
       
       {/* Custom Chord Modal */}
