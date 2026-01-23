@@ -1,7 +1,8 @@
 import { useRef, useEffect, useState } from 'react';
 import { findChord } from '../utils/chord-library';
 import { useChordAutocomplete } from '../hooks/useChordAutocomplete';
-import ChordAutocompleteDropdown from './ChordAutocompleteDropdown';
+import ChordInsertionModal from './ChordInsertionModal';
+import ChordInsertionFAB from './ChordInsertionFAB';
 import CustomChordModal from './CustomChordModal';
 import ChordVariationsModal from './ChordVariationsModal';
 import { createPersonalChord } from '../db/mutations';
@@ -45,10 +46,11 @@ export default function StyledChordEditor({
   userId = null
 }) {
   const editorRef = useRef(null);
-  const dropdownRef = useRef(null);
+  const modalRef = useRef(null);
+  const searchInputRef = useRef(null);
   const skipSyncRef = useRef(false);
   const insertPositionRef = useRef(0);
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
+  const [isFocused, setIsFocused] = useState(false);
 
   // Use shared autocomplete hook
   const {
@@ -75,32 +77,86 @@ export default function StyledChordEditor({
     handleChordPositionSelect,
   } = useChordAutocomplete({ value, instrument, tuning, userId });
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target) &&
-        editorRef.current &&
-        !editorRef.current.contains(event.target)
-      ) {
-        setShowDropdown(false);
-        setQuery('');
+  // Handle focus/blur for FAB visibility
+  const handleFocus = () => {
+    setIsFocused(true);
+  };
+
+  const handleBlur = () => {
+    // Delay to check if focus moved to modal
+    setTimeout(() => {
+      if (document.activeElement !== searchInputRef.current && 
+          !modalRef.current?.contains(document.activeElement)) {
+        setIsFocused(false);
+      }
+    }, 100);
+  };
+
+  // Handle FAB mousedown to capture cursor position before blur
+  const handleFABMouseDown = (e) => {
+    // Prevent default to avoid immediate focus change
+    e.preventDefault();
+    if (editorRef.current) {
+      // CRITICAL: Capture cursor position BEFORE any focus changes
+      // Read position synchronously while editor still has focus
+      // The simplified getCursorPosition() returns an absolute character offset (like selectionStart)
+      const cursorPos = getCursorPosition();
+      
+      // Store the position - getCursorPosition() always returns a valid number
+      insertPositionRef.current = cursorPos;
+      
+      // Debug logging
+      const currentText = getTextFromEditor();
+      console.log('[StyledChordEditor] FAB clicked - captured position:', cursorPos, 'text length:', currentText.length,
+        'text around pos:', JSON.stringify(currentText.substring(Math.max(0, cursorPos - 3), Math.min(currentText.length, cursorPos + 3))));
+      
+      // Now open the modal
+      setQuery('');
+      setSelectedIndex(0);
+      setShowDropdown(true);
+    }
+  };
+
+  // Handle modal close
+  const handleModalClose = () => {
+    setShowDropdown(false);
+    setQuery('');
+    // Restore focus to editor
+    setTimeout(() => {
+      editorRef.current?.focus();
+    }, 0);
+  };
+
+  // Handle insert action from modal
+  const handleModalInsert = () => {
+    const showMoreIndex = filteredElements.length + usedFiltered.length + libraryFiltered.length;
+    const createCustomIndex = showMoreIndex + 1;
+    
+    // Check if "Show more variations" is selected
+    if (selectedIndex === showMoreIndex) {
+      setShowVariationsModal(true);
+      setShowDropdown(false);
+    } else if (selectedIndex === createCustomIndex) {
+      // "Create custom chord" is selected
+      setShowCustomChordModal(true);
+      setShowDropdown(false);
+    } else if (selectedIndex < filteredElements.length) {
+      // Element selected
+      const element = filteredElements[selectedIndex];
+      insertElement(element.type);
+    } else {
+      // Chord selected
+      const chordIndex = selectedIndex - filteredElements.length;
+      const allFiltered = [...usedFiltered, ...libraryFiltered];
+      if (allFiltered[chordIndex]) {
+        const selectedChord = allFiltered[chordIndex];
+        const chordName = selectedChord.name || selectedChord;
+        const chordPosition = selectedChord.position;
+        // Pass position directly to insertChord to avoid state timing issues
+        insertChord(chordName, chordPosition || null);
       }
     }
-
-    if (showDropdown) {
-      // Use a small delay to prevent immediate closure when opening
-      const timeoutId = setTimeout(() => {
-        document.addEventListener('mousedown', handleClickOutside);
-      }, 100);
-      
-      return () => {
-        clearTimeout(timeoutId);
-        document.removeEventListener('mousedown', handleClickOutside);
-      };
-    }
-  }, [showDropdown, setShowDropdown, setQuery]);
+  };
 
   // Helper function to get chord marker text length from a chord span
   const getChordMarkerLength = (chordSpan) => {
@@ -140,259 +196,182 @@ export default function StyledChordEditor({
   };
 
   // Get cursor position in contenteditable (accounting for <br> tags, chord spans, and heading/instruction elements)
+  // Simplified approach: traverse DOM in same order as getTextFromEditor() and count characters until cursor
   const getCursorPosition = () => {
     const selection = window.getSelection();
-    if (selection.rangeCount === 0) return 0;
+    if (selection.rangeCount === 0) {
+      const fullText = getTextFromEditor();
+      return fullText.length;
+    }
     
     const range = selection.getRangeAt(0);
-    // CRITICAL FIX: Handle case where endContainer is the editor itself (common on empty lines or end of text)
-    // When cursor is on an empty line or at the end, the browser might place the selection at the editor level
-    if (range.endContainer === editorRef.current || range.endContainer === editorRef.current.parentNode) {
-      // When endContainer is the editor, endOffset is the child node INDEX before the cursor
-      // So if offset=2, cursor is before child[2], meaning we've passed children 0 and 1
-      const offset = range.endOffset;
-      let pos = 0;
-      
-      // Count all child nodes up to (but not including) the offset
-      // This gives us the position RIGHT BEFORE the child at that index
-      for (let i = 0; i < Math.min(offset, editorRef.current.childNodes.length); i++) {
-        const child = editorRef.current.childNodes[i];
-        if (child.nodeType === Node.TEXT_NODE) {
-          pos += child.textContent.length;
-        } else if (child.tagName === 'BR') {
-          pos += 1; // Count <br> as one character (newline)
-        } else if (child.nodeType === Node.ELEMENT_NODE && child.hasAttribute('data-chord')) {
-          pos += getChordMarkerLength(child);
-        } else if (child.nodeType === Node.ELEMENT_NODE && (child.hasAttribute('data-heading') || child.hasAttribute('data-instruction'))) {
-          pos += getElementMarkerLength(child);
-        } else if (child.nodeType === Node.ELEMENT_NODE) {
-          // For other elements (like divs), count their text content
-          // But be careful - DIV/P elements might represent line breaks in getTextFromEditor
-          // For now, count text content to match the traversal logic
-          pos += child.textContent.length;
-        }
-      }
-      
-      // If offset equals the number of children, cursor is at the very end
-      // Verify this matches the actual text length
-      if (offset >= editorRef.current.childNodes.length) {
-        const fullText = getTextFromEditor();
-        if (pos !== fullText.length) {
-          return fullText.length;
-        }
-      }
-      
-      return pos;
-    }
-    
-    // Also check if endContainer is a BR tag itself (cursor positioned right after a <br>)
-    if (range.endContainer.nodeType === Node.ELEMENT_NODE && range.endContainer.tagName === 'BR') {
-      // Find the position of this BR in the editor
-      const allNodes = [];
-      const collectNodes = (node) => {
-        for (let child = node.firstChild; child; child = child.nextSibling) {
-          if (child.nodeType === Node.TEXT_NODE) {
-            allNodes.push({ type: 'text', node: child });
-          } else if (child.tagName === 'BR') {
-            allNodes.push({ type: 'br', node: child });
-          } else if (child.nodeType === Node.ELEMENT_NODE && child.hasAttribute('data-chord')) {
-            allNodes.push({ type: 'chord', node: child });
-          } else if (child.nodeType === Node.ELEMENT_NODE && (child.hasAttribute('data-heading') || child.hasAttribute('data-instruction'))) {
-            allNodes.push({ type: 'element', node: child });
-          } else if (child.nodeType === Node.ELEMENT_NODE) {
-            collectNodes(child);
-          }
-        }
-      };
-      collectNodes(editorRef.current);
-      
-      let pos = 0;
-      for (const item of allNodes) {
-        if (item.node === range.endContainer) {
-          // Position is right after this BR
-          pos += 1; // Count the <br> itself
-          return pos;
-        }
-        if (item.type === 'text') {
-          pos += item.node.textContent.length;
-        } else if (item.type === 'br') {
-          pos += 1;
-        } else if (item.type === 'chord') {
-          pos += getChordMarkerLength(item.node);
-        } else if (item.type === 'element') {
-          pos += getElementMarkerLength(item.node);
-        }
-      }
-    }
-    
-    // Collect all nodes in order: text nodes, <br> elements, chord spans, and heading/instruction elements
-    // This must match how getTextFromEditor() counts characters
-    const allNodes = [];
-    const collectNodes = (node) => {
-      for (let child = node.firstChild; child; child = child.nextSibling) {
-        if (child.nodeType === Node.TEXT_NODE) {
-          allNodes.push({ type: 'text', node: child });
-        } else if (child.tagName === 'BR') {
-          allNodes.push({ type: 'br', node: child });
-        } else if (child.nodeType === Node.ELEMENT_NODE && child.hasAttribute('data-chord')) {
-          // Chord span - counts as [ChordName] or [ChordName:Position] in text
-          allNodes.push({ type: 'chord', node: child });
-        } else if (child.nodeType === Node.ELEMENT_NODE && (child.hasAttribute('data-heading') || child.hasAttribute('data-instruction'))) {
-          // Heading or instruction element - counts as {heading:text} or {instruction:text} in text
-          allNodes.push({ type: 'element', node: child });
-        } else if (child.nodeType === Node.ELEMENT_NODE) {
-          // Recurse into other elements (like DIV/P which may represent line breaks)
-          collectNodes(child);
-        }
-      }
-    };
-    collectNodes(editorRef.current);
-    
-    let pos = 0;
-    let found = false;
     const isCollapsed = range.collapsed;
     const containerNode = isCollapsed ? range.endContainer : range.startContainer;
+    const offset = isCollapsed ? range.endOffset : range.startOffset;
     
-    for (const item of allNodes) {
-      // Check if this node contains the cursor
-      // For text nodes, the containerNode might be the text node itself
-      // For other nodes, we need to check if the containerNode is within this item
-      let nodeMatches = false;
-      
-      if (item.node === containerNode) {
-        // Direct match
-        nodeMatches = true;
-      } else if (containerNode.nodeType === Node.TEXT_NODE && item.type === 'text') {
-        // Check if the containerNode is the same text node (might be a reference issue)
-        // Also check if containerNode is a child of item.node (shouldn't happen for text nodes, but just in case)
-        if (containerNode === item.node || containerNode.parentNode === item.node) {
-          nodeMatches = true;
-        }
-      }
-      
-      if (nodeMatches) {
-        // For collapsed range (cursor), use endOffset as it represents the insertion point
-        // For non-collapsed (selection), use startOffset
-        let offset = isCollapsed ? range.endOffset : range.startOffset;
-        
-        // The browser's offset is 0-based and represents position BEFORE the character at that index.
-        // Observation: When clicking between two DIFFERENT characters (like 'o' and 't'), the browser
-        // reports the offset one position too early. But when clicking between IDENTICAL characters,
-        // the browser may report it at the first character (before it) or between them.
-        //
-        // Key insight: The browser's offset represents position BEFORE the character at that index.
-        // When clicking between characters:
-        // - For DIFFERENT characters: browser reports one position too early → add 1
-        // - For IDENTICAL characters: If charBefore === charAt, we're at second char (between them) → no adjustment
-        //                              If charAt === charAfter, we're at first char (before them) → add 1
-        //
-        // The key is: we want to insert AFTER the character the user clicked after.
-        // If charAt === charAfter, we're at the first of two identical chars, so add 1.
-        // If charBefore === charAt, we're at the second (already between them), so don't add 1.
-        
-        if (item.type === 'text' && offset < item.node.textContent.length) {
-          const charAtOffset = item.node.textContent[offset];
-          const charBeforeOffset = offset > 0 ? item.node.textContent[offset - 1] : null;
-          const charAfterOffset = offset < item.node.textContent.length - 1 ? item.node.textContent[offset + 1] : null;
-          
-          // If we're at the second of two identical characters (charBefore === charAt),
-          // we're already between them, so no adjustment
-          if (charBeforeOffset === charAtOffset) {
-          }
-          // If we're at the first of two identical characters (charAt === charAfter),
-          // we need to add 1 to get between them
-          else if (charAfterOffset && charAtOffset === charAfterOffset) {
-            offset += 1;
-          }
-          // For different characters, add 1 (browser reports one position too early)
-          else {
-            offset += 1;
-          }
-        }
-        
-        pos += offset;
-        found = true;
-        break;
-      }
-      
-      // Add length of this node to pos (for nodes before the cursor)
-      if (item.type === 'text') {
-        pos += item.node.textContent.length;
-      } else if (item.type === 'br') {
-        pos += 1; // Count <br> as one character (newline)
-      } else if (item.type === 'chord') {
-        // Calculate chord marker length (accounts for position format)
-        pos += getChordMarkerLength(item.node);
-      } else if (item.type === 'element') {
-        // Calculate heading/instruction marker length
-        pos += getElementMarkerLength(item.node);
-      }
-    }
-    
-    // If we didn't find the container, try fallback methods
-    if (!found) {
-      
-      // Fallback 1: If containerNode is a text node, try to find it by text content matching
-      if (containerNode.nodeType === Node.TEXT_NODE) {
-        const textContent = containerNode.textContent;
-        const offset = isCollapsed ? range.endOffset : range.startOffset;
-        const fullText = getTextFromEditor();
-        
-        // Try to find the text node's content in the full text
-        // This handles cases where the text node might be split or merged
-        const index = fullText.indexOf(textContent);
-        if (index !== -1) {
-          const calculatedPos = index + offset;
-          return calculatedPos;
-        }
-      }
-      
-      // Fallback 2: Use a more direct approach - walk the DOM and count characters
-      // This is more reliable when nodes aren't found in our collected list
-      let directPos = 0;
-      const walker = document.createTreeWalker(
-        editorRef.current,
-        NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
-        {
-          acceptNode: (node) => {
-            if (node.nodeType === Node.TEXT_NODE) return NodeFilter.FILTER_ACCEPT;
-            if (node.tagName === 'BR') return NodeFilter.FILTER_ACCEPT;
-            if (node.hasAttribute && (node.hasAttribute('data-chord') || node.hasAttribute('data-heading') || node.hasAttribute('data-instruction'))) {
-              return NodeFilter.FILTER_ACCEPT;
-            }
-            return NodeFilter.FILTER_SKIP;
-          }
-        }
-      );
-      
-      let node;
-      while ((node = walker.nextNode())) {
-        if (node === containerNode && node.nodeType === Node.TEXT_NODE) {
-          const offset = isCollapsed ? range.endOffset : range.startOffset;
-          directPos += offset;
-          return directPos;
-        }
-        if (node.nodeType === Node.TEXT_NODE) {
-          directPos += node.textContent.length;
-        } else if (node.tagName === 'BR') {
-          directPos += 1;
-        } else if (node.hasAttribute('data-chord')) {
-          directPos += getChordMarkerLength(node);
-        } else if (node.hasAttribute('data-heading') || node.hasAttribute('data-instruction')) {
-          directPos += getElementMarkerLength(node);
-        }
-      }
-      
-      // Fallback 3: Last resort - use the calculated pos or text length
+    // If cursor is at the editor level (empty or end), return text length
+    if (containerNode === editorRef.current || containerNode === editorRef.current.parentNode) {
       const fullText = getTextFromEditor();
-      if (pos > fullText.length) {
-        return fullText.length;
-      }
+      return fullText.length;
     }
     
-    return pos;
+    // Traverse nodes in the same order as getTextFromEditor()
+    // This ensures positions always match
+    let position = 0;
+    const traverse = (node, targetNode, targetOffset) => {
+      for (let i = 0; i < node.childNodes.length; i++) {
+        const child = node.childNodes[i];
+        
+        if (child.nodeType === Node.TEXT_NODE) {
+          // Check if this is the target text node
+          if (child === targetNode) {
+            // Add the offset within this text node
+            position += targetOffset;
+            return true; // Found it, stop traversing
+          }
+          // Not the target, add its full length and continue
+          position += child.textContent.length;
+        } else if (child.nodeType === Node.ELEMENT_NODE) {
+          if (child.hasAttribute('data-heading')) {
+            // Heading element - counts as {heading:text}
+            // Check if cursor is within this heading (in a text node inside it)
+            if (child.contains(targetNode)) {
+              // Cursor is in a text node within this heading
+              // Add the marker prefix "{heading:" then recursively search for the text node
+              position += '{heading:'.length;
+              // Recursively search within the heading for the target text node
+              if (traverse(child, targetNode, targetOffset)) {
+                // Found it - add the closing "}" and newline if needed
+                position += '}'.length;
+                const nextSibling = child.nextSibling;
+                if (nextSibling && nextSibling.tagName === 'BR') {
+                  position += 1;
+                } else if (i < node.childNodes.length - 1) {
+                  position += 1;
+                }
+                return true;
+              }
+            }
+            // Not in this heading, add full marker length
+            const headingText = child.getAttribute('data-heading-text') || child.textContent.trim();
+            const headingMarker = `{heading:${headingText}}`;
+            position += headingMarker.length;
+            // Check if next sibling is a BR and skip it (we'll add newline here)
+            const nextSibling = child.nextSibling;
+            if (nextSibling && nextSibling.tagName === 'BR') {
+              position += 1;
+              i++; // Skip the BR element
+            } else if (i < node.childNodes.length - 1) {
+              // Add newline if not last child and no BR follows
+              position += 1;
+            }
+          } else if (child.hasAttribute('data-instruction')) {
+            // Instruction element - counts as {instruction:text}
+            // Check if cursor is within this instruction (in a text node inside it)
+            if (child.contains(targetNode)) {
+              // Cursor is in a text node within this instruction
+              position += '{instruction:'.length;
+              // Recursively search within the instruction for the target text node
+              if (traverse(child, targetNode, targetOffset)) {
+                // Found it - add the closing "}" and newline if needed
+                position += '}'.length;
+                const nextSibling = child.nextSibling;
+                if (nextSibling && nextSibling.tagName === 'BR') {
+                  position += 1;
+                } else if (i < node.childNodes.length - 1) {
+                  position += 1;
+                }
+                return true;
+              }
+            }
+            // Not in this instruction, add full marker length
+            const instructionText = child.getAttribute('data-instruction-text') || child.textContent.trim();
+            const instructionMarker = `{instruction:${instructionText}}`;
+            position += instructionMarker.length;
+            const nextSibling = child.nextSibling;
+            if (nextSibling && nextSibling.tagName === 'BR') {
+              position += 1;
+              i++; // Skip the BR element
+            } else if (i < node.childNodes.length - 1) {
+              position += 1;
+            }
+          } else if (child.tagName === 'BR') {
+            // Line break - counts as \n
+            // Check if cursor is at this BR
+            if (child === targetNode) {
+              position += 1;
+              return true;
+            }
+            position += 1;
+          } else if (child.hasAttribute('data-chord')) {
+            // Chord span - counts as [ChordName] or [ChordName:Position]
+            const childSpans = child.querySelectorAll('span');
+            let chordName = child.getAttribute('data-chord-name') || '';
+            
+            if (!chordName) {
+              if (childSpans.length > 0) {
+                chordName = childSpans[0].textContent.trim();
+              } else {
+                chordName = child.textContent.trim();
+              }
+            }
+            
+            let chordPosition = null;
+            if (childSpans.length > 1) {
+              const positionText = childSpans[1].textContent.trim();
+              const positionNum = parseInt(positionText, 10);
+              if (!isNaN(positionNum) && positionNum > 1) {
+                chordPosition = positionNum;
+              }
+            }
+            
+            const chordMarker = chordPosition 
+              ? `[${chordName}:${chordPosition}]` 
+              : `[${chordName}]`;
+            
+            // Check if cursor is within or after this chord
+            if (child.contains(targetNode) || child === targetNode) {
+              // Cursor is in this chord element - typically at the end
+              position += chordMarker.length;
+              return true;
+            }
+            
+            position += chordMarker.length;
+          } else if (child.tagName === 'DIV' || child.tagName === 'P') {
+            // Block elements represent line breaks in contenteditable
+            // Add newline before this block element (if there's already content)
+            if (position > 0 && !getTextFromEditor().substring(position - 1, position).endsWith('\n')) {
+              position += 1;
+            }
+            // Recursively traverse element children
+            if (traverse(child, targetNode, targetOffset)) {
+              return true;
+            }
+            // Add newline after this block element (if not the last child)
+            if (i < node.childNodes.length - 1) {
+              position += 1;
+            }
+          } else {
+            // Recursively traverse other elements
+            if (traverse(child, targetNode, targetOffset)) {
+              return true;
+            }
+          }
+        }
+      }
+      return false; // Not found in this subtree
+    };
+    
+    // Start traversal from the editor root
+    if (traverse(editorRef.current, containerNode, offset)) {
+      return position;
+    }
+    
+    // Fallback: if we didn't find it, return text length (cursor at end)
+    const fullText = getTextFromEditor();
+    return fullText.length;
   };
-
+  
   // Set cursor position in contenteditable (accounting for <br> tags, chord spans, and heading/instruction elements)
   const setCursorPosition = (pos) => {
     const selection = window.getSelection();
@@ -722,65 +701,8 @@ export default function StyledChordEditor({
 
   const handleKeyDown = (e) => {
     if (showDropdown) {
-      // +1 for "Show more variations", +1 for "Create custom chord"
-      const totalItems = filteredElements.length + usedFiltered.length + libraryFiltered.length + 2;
-      
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedIndex(prev => 
-          prev < totalItems - 1 ? prev + 1 : prev
-        );
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedIndex(prev => prev > 0 ? prev - 1 : 0);
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        const showMoreIndex = filteredElements.length + usedFiltered.length + libraryFiltered.length;
-        const createCustomIndex = showMoreIndex + 1;
-        // Check if "Show more variations" is selected
-        if (selectedIndex === showMoreIndex) {
-          setShowVariationsModal(true);
-          setShowDropdown(false);
-        } else if (selectedIndex === createCustomIndex) {
-          // "Create custom chord" is selected
-          setShowCustomChordModal(true);
-          setShowDropdown(false);
-        } else if (selectedIndex < filteredElements.length) {
-          // Element selected
-          const element = filteredElements[selectedIndex];
-          insertElement(element.type);
-        } else {
-          // Chord selected
-          const chordIndex = selectedIndex - filteredElements.length;
-          const allFiltered = [...usedFiltered, ...libraryFiltered];
-          const selectedChord = allFiltered[chordIndex];
-          if (selectedChord) {
-            const chordName = selectedChord.name || selectedChord;
-            const chordPosition = selectedChord.position;
-            // Pass position directly to insertChord to avoid state timing issues
-            insertChord(chordName, chordPosition || null);
-          }
-        }
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        setShowDropdown(false);
-        setQuery('');
-        editorRef.current?.focus();
-      } else if (e.key === 'Backspace') {
-        if (query.length > 0) {
-          e.preventDefault();
-          setQuery(prev => prev.slice(0, -1));
-        } else {
-          setShowDropdown(false);
-          setQuery('');
-        }
-      } else if (e.key === ' ' || e.key === 'Tab') {
-        setShowDropdown(false);
-        setQuery('');
-      } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && /[a-zA-Z0-9#]/.test(e.key)) {
-        e.preventDefault();
-        setQuery(prev => prev + e.key);
-      }
+      // Modal is open - keyboard navigation is handled by the modal component
+      // We don't need to handle anything here
     } else {
       // Handle chord deletion with single keypress
       if (e.key === 'Backspace' || e.key === 'Delete') {
@@ -825,16 +747,16 @@ export default function StyledChordEditor({
         e.stopPropagation();
         if (editorRef.current) {
           // CRITICAL: Read cursor position IMMEDIATELY, before any state updates or focus changes
-          // Don't call focus() as it might reset the selection, especially on empty lines
+          // The simplified getCursorPosition() returns an absolute character offset (like selectionStart)
           const cursorPos = getCursorPosition();
           
           // Store immediately - this must happen synchronously
           insertPositionRef.current = cursorPos;
           
-          // Debug: log the captured position
+          // Debug logging
           const currentText = getTextFromEditor();
-          const before = currentText.substring(Math.max(0, cursorPos - 5), cursorPos);
-          const after = currentText.substring(cursorPos, Math.min(currentText.length, cursorPos + 5));
+          console.log('[StyledChordEditor] / pressed - captured position:', cursorPos, 'text length:', currentText.length,
+            'text around pos:', JSON.stringify(currentText.substring(Math.max(0, cursorPos - 3), Math.min(currentText.length, cursorPos + 3))));
           
           // Now update UI state (this is async but position is already captured in ref)
           setQuery('');
@@ -873,22 +795,21 @@ export default function StyledChordEditor({
     let insertPos = insertPositionRef.current;
     
     // Validate and clamp insert position to valid range
+    // The simplified getCursorPosition() always returns a valid position, but we still clamp for safety
     if (insertPos < 0) {
-      console.warn('[StyledChordEditor] insertChord - insertPos was negative, clamping to 0');
       insertPos = 0;
     }
     if (insertPos > currentText.length) {
-      console.warn('[StyledChordEditor] insertChord - insertPos exceeds text length, clamping. insertPos:', insertPos, 'text.length:', currentText.length);
       insertPos = currentText.length;
     }
     
-    // Split text at insertion point
+    // Debug logging
+    console.log('[StyledChordEditor] insertChord - position:', insertPos, 'text length:', currentText.length,
+      'text around pos:', JSON.stringify(currentText.substring(Math.max(0, insertPos - 3), Math.min(currentText.length, insertPos + 3))));
+    
+    // Split text at insertion point (like textarea: text.substring(0, selectionStart) + chord + text.substring(selectionStart))
     const before = currentText.substring(0, insertPos);
     const after = currentText.substring(insertPos);
-    
-    // Debug logging to help diagnose position issues
-    const debugBefore = currentText.substring(Math.max(0, insertPos - 10), insertPos);
-    const debugAfter = currentText.substring(insertPos, Math.min(currentText.length, insertPos + 10));
 
     const charBefore = before.length > 0 ? before[before.length - 1] : null;
     const charAfter = after.length > 0 ? after[0] : null;
@@ -1034,47 +955,6 @@ export default function StyledChordEditor({
     }
   };
 
-  // Calculate dropdown position
-  useEffect(() => {
-    if (!showDropdown || !editorRef.current) return;
-    
-    const selection = window.getSelection();
-    let position = { top: 0, left: 0 };
-    
-    if (selection.rangeCount > 0) {
-      const range = selection.getRangeAt(0).cloneRange();
-      const rect = range.getBoundingClientRect();
-      // Use fixed positioning (no scroll offset needed)
-      position = {
-        top: rect.bottom + 5,
-        left: rect.left,
-        positionAbove: false,
-      };
-    } else {
-      // Fallback to editor position
-      const rect = editorRef.current.getBoundingClientRect();
-      position = {
-        top: rect.bottom + 5,
-        left: rect.left,
-        positionAbove: false,
-      };
-    }
-    
-    setDropdownPosition(position);
-  }, [showDropdown]);
-
-  const getDropdownStyle = () => {
-    if (!showDropdown) return {};
-    
-    return {
-      position: 'fixed',
-      top: `${dropdownPosition.top}px`,
-      left: `${dropdownPosition.left}px`,
-      zIndex: 1000,
-      maxWidth: '350px',
-      minWidth: '280px',
-    };
-  };
 
   // Initialize content on mount
   useEffect(() => {
@@ -1090,6 +970,8 @@ export default function StyledChordEditor({
         contentEditable
         onInput={handleInput}
         onKeyDown={handleKeyDown}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
         className={className}
         data-placeholder={placeholder}
         style={{
@@ -1104,11 +986,19 @@ export default function StyledChordEditor({
         }
       `}</style>
       
-      <ChordAutocompleteDropdown
+      {/* Floating Action Button */}
+      <ChordInsertionFAB
+        onMouseDown={handleFABMouseDown}
+        visible={isFocused && !showDropdown}
+      />
+      
+      {/* Chord Insertion Modal */}
+      <ChordInsertionModal
         isOpen={showDropdown}
-        position={getDropdownStyle()}
         query={query}
+        setQuery={setQuery}
         selectedIndex={selectedIndex}
+        setSelectedIndex={setSelectedIndex}
         filteredElements={filteredElements}
         usedFiltered={usedFiltered}
         libraryFiltered={libraryFiltered}
@@ -1125,7 +1015,10 @@ export default function StyledChordEditor({
           setShowCustomChordModal(true);
           setShowDropdown(false);
         }}
-        dropdownRef={dropdownRef}
+        onClose={handleModalClose}
+        onInsert={handleModalInsert}
+        modalRef={modalRef}
+        searchInputRef={searchInputRef}
       />
       
       {/* Custom Chord Modal */}
