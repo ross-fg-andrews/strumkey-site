@@ -13,6 +13,7 @@ export default defineConfig({
   cacheDir: '.vite',
   server: {
     port: 3000,
+    host: true, // Allow access from network devices (e.g., iPad)
     open: true,
     // Improve HMR reliability
     hmr: {
