@@ -223,14 +223,20 @@ export default function StyledChordEditor({
         const child = node.childNodes[i];
         
         if (child.nodeType === Node.TEXT_NODE) {
+          // Get effective content (excluding zero-width spaces used for iOS cursor positioning)
+          const rawContent = child.textContent;
+          const effectiveContent = rawContent.replace(/\u200B/g, '');
+          
           // Check if this is the target text node
           if (child === targetNode) {
-            // Add the offset within this text node
-            position += targetOffset;
+            // Calculate effective offset (accounting for zero-width spaces before cursor position)
+            const beforeCursor = rawContent.substring(0, targetOffset);
+            const effectiveOffset = beforeCursor.replace(/\u200B/g, '').length;
+            position += effectiveOffset;
             return true; // Found it, stop traversing
           }
-          // Not the target, add its full length and continue
-          position += child.textContent.length;
+          // Not the target, add its effective length and continue
+          position += effectiveContent.length;
         } else if (child.nodeType === Node.ELEMENT_NODE) {
           if (child.hasAttribute('data-heading')) {
             // Heading element - counts as {heading:text}
@@ -397,17 +403,30 @@ export default function StyledChordEditor({
     collectNodes(editorRef.current);
     
     let currentPos = 0;
-    for (const item of allNodes) {
+    for (let i = 0; i < allNodes.length; i++) {
+      const item = allNodes[i];
       if (item.type === 'text') {
-        const nodeLength = item.node.textContent.length;
-        if (currentPos + nodeLength >= pos) {
-          range.setStart(item.node, pos - currentPos);
-          range.setEnd(item.node, pos - currentPos);
+        // Get effective length (excluding zero-width spaces which are only for cursor positioning)
+        const rawContent = item.node.textContent;
+        const effectiveContent = rawContent.replace(/\u200B/g, '');
+        const effectiveLength = effectiveContent.length;
+        
+        // Skip zero-width-space-only nodes for position counting, but remember them
+        if (effectiveLength === 0) {
+          // This is a zero-width space node (for cursor positioning after chords)
+          // Don't add to currentPos, but this is a valid place to position cursor
+          continue;
+        }
+        
+        if (currentPos + effectiveLength >= pos) {
+          const offset = pos - currentPos;
+          range.setStart(item.node, offset);
+          range.setEnd(item.node, offset);
           selection.removeAllRanges();
           selection.addRange(range);
           return;
         }
-        currentPos += nodeLength;
+        currentPos += effectiveLength;
       } else if (item.type === 'br') {
         if (currentPos === pos) {
           range.setStartBefore(item.node);
@@ -428,11 +447,20 @@ export default function StyledChordEditor({
         const chordLength = getChordMarkerLength(item.node);
         if (currentPos + chordLength >= pos) {
           // Position is within or right after the chord
-          // Place cursor right after the chord span
-          range.setStartAfter(item.node);
-          range.setEndAfter(item.node);
-          selection.removeAllRanges();
-          selection.addRange(range);
+          // There should be a zero-width space text node after each chord for iOS cursor positioning
+          const nextItem = allNodes[i + 1];
+          
+          if (nextItem && nextItem.type === 'text') {
+            // Position at start of next text node (zero-width space or regular text)
+            selection.removeAllRanges();
+            selection.collapse(nextItem.node, 0);
+          } else {
+            // Fallback if no text node (shouldn't happen with zero-width spaces)
+            range.setStartAfter(item.node);
+            range.setEndAfter(item.node);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
           return;
         }
         currentPos += chordLength;
@@ -453,18 +481,24 @@ export default function StyledChordEditor({
     }
     
     // If we get here, position is at the end - place cursor at end of last node
-    if (allNodes.length > 0) {
-      const lastItem = allNodes[allNodes.length - 1];
-      if (lastItem.type === 'text') {
-        range.setStart(lastItem.node, lastItem.node.textContent.length);
-        range.setEnd(lastItem.node, lastItem.node.textContent.length);
-      } else if (lastItem.type === 'br') {
-        range.setStartAfter(lastItem.node);
-        range.setEndAfter(lastItem.node);
-      } else if (lastItem.type === 'chord') {
-        range.setStartAfter(lastItem.node);
-        range.setEndAfter(lastItem.node);
-      }
+    if (allNodes.length === 0) {
+      // No nodes to position cursor in - just return without modifying selection
+      return;
+    }
+    
+    const lastItem = allNodes[allNodes.length - 1];
+    if (lastItem.type === 'text') {
+      range.setStart(lastItem.node, lastItem.node.textContent.length);
+      range.setEnd(lastItem.node, lastItem.node.textContent.length);
+    } else if (lastItem.type === 'br') {
+      range.setStartAfter(lastItem.node);
+      range.setEndAfter(lastItem.node);
+    } else if (lastItem.type === 'chord') {
+      range.setStartAfter(lastItem.node);
+      range.setEndAfter(lastItem.node);
+    } else if (lastItem.type === 'element') {
+      range.setStartAfter(lastItem.node);
+      range.setEndAfter(lastItem.node);
     }
     
     selection.removeAllRanges();
@@ -482,7 +516,8 @@ export default function StyledChordEditor({
         const child = node.childNodes[i];
         
         if (child.nodeType === Node.TEXT_NODE) {
-          text += child.textContent;
+          // Strip zero-width spaces (used for iOS cursor positioning)
+          text += child.textContent.replace(/\u200B/g, '');
         } else if (child.nodeType === Node.ELEMENT_NODE) {
           if (child.hasAttribute('data-heading')) {
             // This is a styled heading element
@@ -649,6 +684,9 @@ export default function StyledChordEditor({
           }
           
           fragment.appendChild(span);
+          // Add zero-width space after chord for iOS Safari cursor positioning
+          // iOS can only position cursor inside text nodes, not after non-editable elements
+          fragment.appendChild(document.createTextNode('\u200B'));
         } else if (part) {
           // Regular text
           const textNode = document.createTextNode(part);
@@ -850,11 +888,22 @@ export default function StyledChordEditor({
     lastValueRef.current = newText;
     onChange({ target: { value: newText } });
 
-    setTimeout(() => {
-      const newCursorPos = insertPos + spaceBefore.length + chordText.length + 2 + spaceAfter.length;
-      setCursorPosition(newCursorPos);
+    // Calculate cursor position for after the inserted chord
+    const newCursorPos = insertPos + spaceBefore.length + chordText.length + 2 + spaceAfter.length;
+    
+    // Use double requestAnimationFrame for iOS Safari compatibility
+    // iOS needs the first frame for DOM update, second frame for cursor rendering
+    requestAnimationFrame(() => {
       editorRef.current?.focus();
-    }, 0);
+      setCursorPosition(newCursorPos);
+      
+      // Second RAF specifically for iOS Safari cursor rendering
+      requestAnimationFrame(() => {
+        if (editorRef.current && document.activeElement === editorRef.current) {
+          setCursorPosition(newCursorPos);
+        }
+      });
+    });
 
     setShowDropdown(false);
     setQuery('');
