@@ -290,215 +290,8 @@ export default function SongSheet() {
       .filter(Boolean);
   }, [uniqueChordPairs, instrument, tuning, dbChords, embeddedChords]);
 
-  // Track container width using ResizeObserver (detects zoom and resize) - MUST be before early returns
+  // Container ref for layout
   const containerRef = useRef(null);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [isMobile, setIsMobile] = useState(false);
-
-  // Measure longest lyric line width using hidden DOM element (zoom-aware) - MUST be before early returns
-  const longestLineWidth = useMemo(() => {
-    if (!song?.lyrics) return 0;
-    
-    const lines = song.lyrics.split('\n');
-    if (lines.length === 0) return 0;
-    
-    // Create a hidden measurement element with same styling as lyrics
-    // Match the exact CSS classes: font-mono, text-base (16px), leading-relaxed (1.625)
-    const measureSpan = document.createElement('span');
-    measureSpan.style.cssText = `
-      position: absolute;
-      visibility: hidden;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      font-size: 16px;
-      line-height: 1.625;
-      white-space: pre;
-      padding: 0;
-      margin: 0;
-      top: -9999px;
-      left: -9999px;
-    `;
-    document.body.appendChild(measureSpan);
-    
-    let maxWidth = 0;
-    lines.forEach(line => {
-      // Measure non-empty lines (including lines with only spaces)
-      if (line.length > 0) {
-        measureSpan.textContent = line;
-        const width = measureSpan.getBoundingClientRect().width; // Zoom-aware measurement
-        maxWidth = Math.max(maxWidth, width);
-      }
-    });
-    
-    document.body.removeChild(measureSpan);
-    return maxWidth;
-  }, [song?.lyrics]);
-
-  // Track container width using ResizeObserver (detects zoom and resize)
-  useEffect(() => {
-    if (!containerRef.current) return;
-    
-    // ResizeObserver fires on: window resize, browser zoom, content changes
-    const observer = new ResizeObserver((entries) => {
-      const width = entries[0].contentRect.width; // Zoom-aware measurement
-      if (width > 0) {
-        setContainerWidth(width);
-      }
-    });
-    
-    observer.observe(containerRef.current);
-    
-    // Initial measurement (in case ResizeObserver doesn't fire immediately)
-    const initialWidth = containerRef.current.getBoundingClientRect().width;
-    if (initialWidth > 0) {
-      setContainerWidth(initialWidth);
-    }
-    
-    return () => {
-      observer.disconnect();
-    };
-  }, [song?.id]); // Re-observe when song changes
-
-  // Track mobile state (reactive to window resize)
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    
-    checkMobile(); // Initial check
-    window.addEventListener('resize', checkMobile);
-    
-    return () => {
-      window.removeEventListener('resize', checkMobile);
-    };
-  }, []);
-
-  // Calculate optimal chord chart container width - MUST be before early returns
-  // ALWAYS prioritizes preventing lyric line breaks over showing more chords
-  const optimalChordWidth = useMemo(() => {
-    // On mobile (< 768px), use default behavior (horizontal scroll)
-    if (isMobile) {
-      return null; // null means use default CSS (mobile behavior)
-    }
-    
-    // Need both measurements to calculate
-    // If containerWidth is 0, we haven't measured yet - use fallback
-    if (!containerWidth || containerWidth === 0 || !longestLineWidth) {
-      return 256; // Fallback to md:w-64 (256px) until we have measurements
-    }
-    
-    const gap = 12; // gap-x-3 = 12px
-    const chordWidth = 74; // From ChordDiagram component (labelContainerWidth)
-    const containerGap = 24; // md:gap-6 = 24px between lyrics and chords
-    
-    // Smart buffer calculation: use more buffer when space is tight, less when there's plenty
-    // Base buffer accounts for:
-    // - Text rendering variations across browsers
-    // - Subpixel rendering differences
-    // - Font metrics variations
-    // - Potential word wrapping edge cases
-    // - Browser zoom rendering differences
-    const baseBuffer = 70; // Slightly increased buffer to prevent occasional breaks
-    
-    // Calculate how much space lyrics actually need
-    const lyricNeedsWidth = longestLineWidth + baseBuffer;
-    
-    // Calculate available space for chords
-    const availableForChords = containerWidth - lyricNeedsWidth - containerGap;
-    
-    // Minimum width for 2 chords (minimum per row - STRICT REQUIREMENT)
-    const minTwoChordsWidth = 2 * (chordWidth + gap) - gap;
-    
-    // If not enough space for 2 chords with normal buffer, try with reduced buffer
-    // ALWAYS show at least 2 chords - never fall back to 1
-    if (availableForChords < minTwoChordsWidth) {
-      // Try with reduced lyrics buffer to fit 2 chords
-      const tightLyricWidth = longestLineWidth + 50; // Reduced buffer for tight space
-      const tightAvailableForChords = containerWidth - tightLyricWidth - containerGap;
-      if (tightAvailableForChords >= minTwoChordsWidth) {
-        return minTwoChordsWidth; // Show 2 chords with tighter lyrics buffer
-      }
-      // If still not enough, try even tighter buffer
-      const veryTightLyricWidth = longestLineWidth + 40; // Very tight buffer
-      const veryTightAvailableForChords = containerWidth - veryTightLyricWidth - containerGap;
-      if (veryTightAvailableForChords >= minTwoChordsWidth) {
-        return minTwoChordsWidth; // Show 2 chords with very tight lyrics buffer
-      }
-      // Last resort: use minimum buffer but still show 2 chords
-      // This ensures we always show 2 chords, even if lyrics buffer is minimal
-      return minTwoChordsWidth;
-    }
-    
-    // Calculate how many chords could theoretically fit
-    const theoreticalChords = Math.floor(availableForChords / (chordWidth + gap));
-    
-    // Dynamic reduction: be more conservative when space is tight, use space efficiently when there's room
-    // Minimum is 2 chords per row
-    // If we have plenty of space (theoreticalChords >= 4), reduce by 1
-    // If space is moderate (theoreticalChords == 3), reduce by 1
-    // If space is tight (theoreticalChords == 2), keep 2 (minimum)
-    let maxChordsPerRow;
-    if (theoreticalChords >= 4) {
-      // Plenty of space - reduce by 1 to be safe but use space efficiently
-      maxChordsPerRow = Math.min(5, theoreticalChords - 1);
-    } else if (theoreticalChords === 3) {
-      // Moderate space - reduce by 1 to prevent breaks
-      maxChordsPerRow = 2;
-    } else {
-      // Tight space - keep minimum of 2 chords
-      maxChordsPerRow = 2;
-    }
-    
-    // Ensure minimum of 2 chords per row
-    maxChordsPerRow = Math.max(2, maxChordsPerRow);
-    
-    // Calculate optimal width: chords width + gaps
-    const calculatedWidth = maxChordsPerRow * (chordWidth + gap) - gap;
-    
-    // Ensure minimum width for usability (at least 2 chords)
-    const minWidth = minTwoChordsWidth;
-    
-    // Calculate the actual lyrics width with this chord width
-    const actualLyricsWidth = containerWidth - calculatedWidth - containerGap;
-    
-    // Safety check: ensure lyrics have enough room (longest line + buffer)
-    // Use a slightly larger buffer for the safety check to prevent edge cases
-    const safetyBuffer = 50; // Extra safety margin
-    if (actualLyricsWidth < longestLineWidth + safetyBuffer && maxChordsPerRow > 2) {
-      // Reduce by one chord to ensure lyrics have enough space (but keep minimum of 2)
-      const reducedChords = Math.max(2, maxChordsPerRow - 1);
-      const reducedWidth = Math.max(minWidth, reducedChords * (chordWidth + gap) - gap);
-      const reducedLyricsWidth = containerWidth - reducedWidth - containerGap;
-      
-      // Double-check that reduced width gives enough space
-      if (reducedLyricsWidth >= longestLineWidth + safetyBuffer) {
-        return reducedWidth;
-      }
-      // If even reduced doesn't work, use minimum 2 chords with tighter buffer
-      // ALWAYS show at least 2 chords - never fall back to 1
-      const minTwoWidth = minTwoChordsWidth;
-      const minTwoLyricsWidth = containerWidth - minTwoWidth - containerGap;
-      // Use minimum 2 chords - lyrics will have whatever space is left
-      // This prioritizes showing 2 chords over perfect lyrics spacing
-      return minTwoWidth;
-    }
-    
-    // Final check: ensure we're not leaving excessive gap
-    // If there's more than 100px gap between chords and lyrics, we can add one more chord
-    const gapBetween = actualLyricsWidth - longestLineWidth;
-    if (gapBetween > 100 && maxChordsPerRow < 5 && theoreticalChords > maxChordsPerRow) {
-      // We have plenty of buffer, can safely add one more chord
-      const increasedChords = Math.min(5, maxChordsPerRow + 1);
-      const increasedWidth = increasedChords * (chordWidth + gap) - gap;
-      const newLyricsWidth = containerWidth - increasedWidth - containerGap;
-      
-      // Only add the chord if lyrics still have enough space (longest line + 50px buffer for safety)
-      if (newLyricsWidth >= longestLineWidth + 50) {
-        return increasedWidth;
-      }
-    }
-    
-    return calculatedWidth;
-  }, [longestLineWidth, containerWidth, isMobile]);
 
   // Find current song position in songbook and calculate navigation
   const songbookNavigation = useMemo(() => {
@@ -1061,9 +854,9 @@ export default function SongSheet() {
         </div>
       </div>
 
-      <div ref={containerRef} className="flex flex-col md:flex-row md:gap-6">
+      <div ref={containerRef} className="flex flex-col">
         {/* Lyrics Section */}
-        <div className="flex-1 order-2 md:order-1">
+        <div className="flex-1 order-2">
           {isEditing ? (
             <StyledChordEditor
               value={lyricsText}
@@ -1188,29 +981,14 @@ export default function SongSheet() {
         {/* Chord Charts Section */}
         {chordDiagrams.length > 0 ? (
           <div 
-            className={`mb-6 md:mb-0 md:flex-shrink-0 order-1 md:order-2 transition-all duration-300 ease-in-out ${
+            className={`mb-6 order-1 transition-all duration-300 ease-in-out ${
               !chordsPanelVisible 
-                ? 'max-h-0 overflow-hidden mb-0 md:max-h-none md:overflow-hidden md:w-0 md:opacity-0 md:pointer-events-none' 
-                : 'max-h-[1000px] md:max-h-none md:translate-x-0 md:opacity-100'
+                ? 'max-h-0 overflow-hidden mb-0' 
+                : 'max-h-[1000px]'
             }`}
-            style={!chordsPanelVisible ? { width: '0px' } : (optimalChordWidth !== null ? { width: `${optimalChordWidth}px` } : undefined)}
           >
-            {/* Desktop: flex wrap layout */}
-            <div className="hidden md:flex flex-wrap gap-x-3 gap-y-6 justify-start">
-              {chordDiagrams.map(({ name, frets, baseFret, position, instrument: chordInstrument, tuning: chordTuning }) => (
-                <ChordDiagram 
-                  key={`${name}-${position}`}
-                  frets={frets} 
-                  baseFret={baseFret}
-                  chordName={name}
-                  position={position}
-                  instrument={chordInstrument || instrument}
-                  tuning={chordTuning || tuning}
-                />
-              ))}
-            </div>
-            {/* Mobile: horizontal scrollable line */}
-            <div className={`md:hidden flex gap-x-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent transition-opacity duration-200 ${
+            {/* Horizontal scrollable line */}
+            <div className={`flex gap-x-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent transition-opacity duration-200 ${
               chordsPanelVisible ? 'opacity-100 delay-150' : 'opacity-0 delay-0'
             }`}>
               {chordDiagrams.map(({ name, frets, baseFret, position, instrument: chordInstrument, tuning: chordTuning }) => (
@@ -1229,15 +1007,14 @@ export default function SongSheet() {
         ) : uniqueChordPairs.length > 0 ? (
           // Show message if chords exist but don't match
           <div 
-            className={`mb-6 md:mb-0 md:flex-shrink-0 order-1 md:order-2 transition-all duration-300 ease-in-out ${
+            className={`mb-6 order-1 transition-all duration-300 ease-in-out ${
               !chordsPanelVisible 
-                ? 'max-h-0 overflow-hidden mb-0 md:max-h-none md:overflow-hidden md:w-0 md:opacity-0 md:pointer-events-none' 
-                : 'max-h-[1000px] md:max-h-none md:translate-x-0 md:opacity-100'
+                ? 'max-h-0 overflow-hidden mb-0' 
+                : 'max-h-[1000px]'
             }`}
-            style={!chordsPanelVisible ? { width: '0px' } : (optimalChordWidth !== null ? { width: `${optimalChordWidth}px` } : undefined)}
           >
             <div className={`bg-gray-50 border border-gray-200 rounded-lg p-4 transition-opacity duration-200 ${
-              chordsPanelVisible ? 'opacity-100 delay-150 md:delay-0' : 'opacity-0 delay-0'
+              chordsPanelVisible ? 'opacity-100 delay-150' : 'opacity-0 delay-0'
             }`}>
               <h3 className="text-sm font-semibold mb-2">Chord Charts</h3>
               <p className="text-xs text-gray-600">
