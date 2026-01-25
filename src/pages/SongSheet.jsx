@@ -12,6 +12,7 @@ import StyledChordEditor from '../components/StyledChordEditor';
 import ChordDiagram from '../components/ChordDiagram';
 import { findChord } from '../utils/chord-library';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
+import { MicrophoneStageIcon } from '../utils/icons';
 import PDFImportModal from '../components/PDFImportModal';
 
 export default function SongSheet() {
@@ -730,7 +731,7 @@ export default function SongSheet() {
               </>
             ) : (
               <>
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-0.5">
                   {isViewMode && songbookNavigation ? (
                     <div className="relative" ref={songSelectorRef}>
                       <button
@@ -787,7 +788,10 @@ export default function SongSheet() {
                   )}
                 </div>
                 {song.artist && (
-                  <p className="text-xl text-gray-600">{song.artist}</p>
+                  <div className="flex items-center gap-1">
+                    <MicrophoneStageIcon size={18} className="text-gray-500" />
+                    <span className="text-xl text-gray-600">{song.artist}</span>
+                  </div>
                 )}
               </>
             )}
