@@ -159,28 +159,34 @@ export default function StyledChordEditor({
   };
 
   // Helper function to get chord marker text length from a chord span
+  // Must use stored format (data-chord-name) to match getTextFromEditor and newCursorPos;
+  // display format (e.g. "Bm") can differ from stored (e.g. "Bminor"), causing cursor drift.
   const getChordMarkerLength = (chordSpan) => {
+    const dataName = chordSpan.getAttribute('data-chord-name');
+    if (dataName) {
+      const childSpans = chordSpan.querySelectorAll('span');
+      let chordPosition = null;
+      if (childSpans.length > 1) {
+        const positionNum = parseInt(childSpans[1].textContent.trim(), 10);
+        if (!isNaN(positionNum) && positionNum > 1) chordPosition = positionNum;
+      }
+      return chordPosition ? `[${dataName}:${chordPosition}]`.length : `[${dataName}]`.length;
+    }
     const childSpans = chordSpan.querySelectorAll('span');
     let chordName = '';
     let chordPosition = null;
-    
     if (childSpans.length > 0) {
       chordName = childSpans[0].textContent.trim();
       if (childSpans.length > 1) {
-        const positionText = childSpans[1].textContent.trim();
-        const positionNum = parseInt(positionText, 10);
-        if (!isNaN(positionNum) && positionNum > 1) {
-          chordPosition = positionNum;
-        }
+        const positionNum = parseInt(childSpans[1].textContent.trim(), 10);
+        if (!isNaN(positionNum) && positionNum > 1) chordPosition = positionNum;
       }
     } else {
       chordName = chordSpan.textContent.trim();
     }
-    
-    // Calculate length: [ChordName] or [ChordName:Position]
-    return chordPosition 
-      ? chordName.length + 1 + chordPosition.toString().length + 2 // [Name:Pos]
-      : chordName.length + 2; // [Name]
+    return chordPosition
+      ? chordName.length + 1 + chordPosition.toString().length + 2
+      : chordName.length + 2;
   };
 
   // Helper function to get heading/instruction marker length
@@ -419,11 +425,11 @@ export default function StyledChordEditor({
         }
         
         if (currentPos + effectiveLength >= pos) {
-          const offset = pos - currentPos;
-          range.setStart(item.node, offset);
-          range.setEnd(item.node, offset);
-          selection.removeAllRanges();
-          selection.addRange(range);
+            const offset = pos - currentPos;
+            range.setStart(item.node, offset);
+            range.setEnd(item.node, offset);
+            selection.removeAllRanges();
+            selection.addRange(range);
           return;
         }
         currentPos += effectiveLength;
@@ -449,7 +455,6 @@ export default function StyledChordEditor({
           // Position is within or right after the chord
           // There should be a zero-width space text node after each chord for iOS cursor positioning
           const nextItem = allNodes[i + 1];
-          
           if (nextItem && nextItem.type === 'text') {
             // Position at start of next text node (zero-width space or regular text)
             selection.removeAllRanges();
