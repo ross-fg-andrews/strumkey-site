@@ -46,6 +46,7 @@ export default function StyledChordEditor({
   userId = null
 }) {
   const editorRef = useRef(null);
+  const containerRef = useRef(null);
   const modalRef = useRef(null);
   const searchInputRef = useRef(null);
   const skipSyncRef = useRef(false);
@@ -1018,7 +1019,7 @@ export default function StyledChordEditor({
   }, []);
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <div
         ref={editorRef}
         contentEditable
