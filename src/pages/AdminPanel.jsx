@@ -12,6 +12,7 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [copiedToken, setCopiedToken] = useState(null);
+  const [activeTab, setActiveTab] = useState('invitations');
 
   // Query the full user object to check isSiteAdmin
   const { data: userData } = db.useQuery({
@@ -30,6 +31,11 @@ export default function AdminPanel() {
 
   const waitingList = waitingListData?.waitingList || [];
   const invites = invitesData?.invites || [];
+
+  const tabs = [
+    { id: 'invitations', label: 'Invitations' },
+    { id: 'chords', label: 'Chords' },
+  ];
 
   // Redirect if not authenticated or not admin
   useEffect(() => {
@@ -97,11 +103,29 @@ export default function AdminPanel() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <h1 className="heading-alice">Admin Panel</h1>
+      {/* Tabs */}
+      <div className="border-b mb-6">
+        <div className="flex gap-4">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`pb-2 px-4 border-b-2 transition-colors ${
+                activeTab === tab.id
+                  ? 'border-primary-600 text-primary-600 font-semibold'
+                  : 'border-transparent text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Create Invite Section */}
+      {/* Tab Content */}
+      {activeTab === 'invitations' && (
+        <>
+          {/* Create Invite Section */}
       <div className="card">
         <h2 className="text-2xl font-semibold mb-4">Create Invite</h2>
         <form onSubmit={handleCreateInvite} className="space-y-4">
@@ -220,6 +244,14 @@ export default function AdminPanel() {
           </div>
         )}
       </div>
+        </>
+      )}
+
+      {activeTab === 'chords' && (
+        <div>
+          {/* Chords tab content will go here */}
+        </div>
+      )}
     </div>
   );
 }
