@@ -238,9 +238,10 @@ export default function SongSheet() {
         if (normalizedChord) {
           // Get position from chord object (parsed from chordPosition field, default to 1)
           const position = chord.chordPosition || 1;
+          const chordId = chord.chordId || null;
           const key = `${normalizedChord}:${position}`;
           if (!chordPairs.has(key)) {
-            chordPairs.set(key, { name: normalizedChord, position });
+            chordPairs.set(key, { name: normalizedChord, position, chordId });
           }
         }
       }
@@ -269,12 +270,18 @@ export default function SongSheet() {
     if (!uniqueChordPairs || uniqueChordPairs.length === 0) return [];
     
     return uniqueChordPairs
-      .map(({ name: chordName, position }) => {
-        // Try to find chord with specific position in order: embedded, database personal, database main
-        const chordData = findChord(chordName, instrument, tuning, position, {
-          databaseChords: dbChords,
-          embeddedChords: embeddedChords,
-        });
+      .map(({ name: chordName, position, chordId }) => {
+        // Try ID lookup first if available, then fall back to name+position lookup
+        // Order: embedded, database personal, database main
+        const chordData = chordId
+          ? findChord(chordName, instrument, tuning, position, {
+              databaseChords: dbChords,
+              embeddedChords: embeddedChords,
+            }, chordId)
+          : findChord(chordName, instrument, tuning, position, {
+              databaseChords: dbChords,
+              embeddedChords: embeddedChords,
+            });
         
         if (chordData && chordData.frets) {
           return {
@@ -899,10 +906,24 @@ export default function SongSheet() {
                   <p key={i} className="text-base leading-relaxed">
                     {line === '' ? '\u00A0' : line.split(/\[([^\]]+)\]/).map((part, j) => {
                       if (j % 2 === 1) {
-                        // Parse position from chord name format: "C:2" -> chord "C", position 2
-                        const positionMatch = part.match(/^(.+):(\d+)$/);
-                        const chordName = positionMatch ? positionMatch[1].trim() : part;
-                        const chordPosition = positionMatch ? parseInt(positionMatch[2], 10) : 1;
+                        // Parse chord format: "C:2:abc123" or "C::abc123" or "C:2" or "C"
+                        let chordName = part;
+                        let chordPosition = 1;
+                        
+                        // Try to match format with ID: "C:2:abc123" or "C::abc123"
+                        const idMatch = part.match(/^(.+?):(\d*):(.+)$/);
+                        if (idMatch) {
+                          chordName = idMatch[1].trim();
+                          const positionStr = idMatch[2];
+                          chordPosition = positionStr ? parseInt(positionStr, 10) || 1 : 1;
+                        } else {
+                          // Try to match format without ID: "C:2" or "C"
+                          const positionMatch = part.match(/^(.+):(\d+)$/);
+                          if (positionMatch) {
+                            chordName = positionMatch[1].trim();
+                            chordPosition = parseInt(positionMatch[2], 10) || 1;
+                          }
+                        }
                         
                         return (
                           <span key={j} className="inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium">
@@ -951,10 +972,24 @@ export default function SongSheet() {
                           if (segment.type === 'space') {
                             return <span key={idx}>{segment.content}</span>;
                           } else {
-                            // Parse position from chord name format: "C:2" -> chord "C", position 2
-                            const positionMatch = segment.content.match(/^(.+):(\d+)$/);
-                            const chordName = positionMatch ? positionMatch[1].trim() : segment.content;
-                            const chordPosition = positionMatch ? parseInt(positionMatch[2], 10) : 1;
+                            // Parse chord format: "C:2:abc123" or "C::abc123" or "C:2" or "C"
+                            let chordName = segment.content;
+                            let chordPosition = 1;
+                            
+                            // Try to match format with ID: "C:2:abc123" or "C::abc123"
+                            const idMatch = segment.content.match(/^(.+?):(\d*):(.+)$/);
+                            if (idMatch) {
+                              chordName = idMatch[1].trim();
+                              const positionStr = idMatch[2];
+                              chordPosition = positionStr ? parseInt(positionStr, 10) || 1 : 1;
+                            } else {
+                              // Try to match format without ID: "C:2" or "C"
+                              const positionMatch = segment.content.match(/^(.+):(\d+)$/);
+                              if (positionMatch) {
+                                chordName = positionMatch[1].trim();
+                                chordPosition = parseInt(positionMatch[2], 10) || 1;
+                              }
+                            }
                             
                             return (
                               <span
