@@ -49,7 +49,12 @@ const rules = {
       // Allow creating personal chords (user's own) or main library chords (for migrations)
       create: "auth.id != null && ((data.libraryType == 'personal' && data.createdBy == auth.id) || data.libraryType == 'main')",
       delete: "auth.id != null && data.libraryType == 'personal' && data.createdBy == auth.id",
-      update: "auth.id != null && data.libraryType == 'personal' && data.createdBy == auth.id",
+      // Allow updating main library chords for any authenticated user
+      // Note: Main library updates are restricted to site admins in application code (AdminPanel)
+      // In InstantDB, 'data' refers to the existing record, not the update payload
+      // Allow updates if: (1) it's a main library chord, (2) libraryType is null/undefined (legacy), 
+      // or (3) it's a personal chord owned by the user
+      update: "auth.id != null && (data.libraryType != 'personal' || (data.libraryType == 'personal' && data.createdBy == auth.id))",
     },
   },
   groupMembers: {

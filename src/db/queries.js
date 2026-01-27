@@ -924,3 +924,117 @@ export function useRecentlyPlayedSongs(userId) {
     error,
   };
 }
+
+// Get chord voicings for a specific key + suffix from main library
+export function useChordVoicings(key, suffix, instrument = 'ukulele', tuning = 'ukulele_standard') {
+  // Always call hooks unconditionally to satisfy React's rules of hooks
+  // Only query if we have both key and suffix (suffix can be empty string for major chords)
+  const hasValidParams = key && key.trim() !== '' && suffix !== undefined && suffix !== null;
+  
+  // Build where clause - query all chords for the key, filter suffix in JavaScript
+  let whereClause;
+  
+  if (!hasValidParams) {
+    // Use an impossible condition - query for a key that will never exist
+    // Use "ZZ" which is not a valid musical key (keys are A-G with optional #/b)
+    whereClause = { 
+      key: 'ZZ',
+      instrument: 'ukulele',
+      libraryType: 'main'
+    };
+  } else {
+    whereClause = {
+      key: key.trim(),
+      instrument,
+      tuning: tuning === 'ukulele_standard' 
+        ? { $in: ['ukulele_standard', 'standard'] }
+        : tuning,
+      libraryType: 'main',
+    };
+    // Don't filter by suffix in query - we'll filter in JavaScript to handle empty/major
+  }
+  
+  const { data, error } = db.useQuery({
+    chords: {
+      $: {
+        where: whereClause,
+        order: { position: 'asc' },
+      },
+    },
+  });
+
+  if (!hasValidParams) {
+    return { data: { chords: [] }, error: null };
+  }
+
+  // Filter by suffix in JavaScript to handle empty string and 'major' equivalence
+  const chords = data?.chords || [];
+  const filteredChords = chords.filter(chord => {
+    const chordSuffix = chord.suffix || '';
+    // Normalize: treat empty string and 'major' as the same
+    const normalizedChordSuffix = chordSuffix === 'major' ? '' : chordSuffix;
+    const normalizedQuerySuffix = suffix === 'major' ? '' : (suffix || '');
+    return normalizedChordSuffix === normalizedQuerySuffix;
+  });
+
+  return { 
+    data: { chords: filteredChords }, 
+    error 
+  };
+}
+
+// Get unique suffixes for a given key from main library
+export function useUniqueSuffixes(key, instrument = 'ukulele', tuning = 'ukulele_standard') {
+  // Always call hooks unconditionally to satisfy React's rules of hooks
+  const hasValidKey = key && key.trim() !== '';
+  
+  const { data, error } = db.useQuery({
+    chords: {
+      $: {
+        where: hasValidKey
+          ? {
+              key: key.trim(),
+              instrument,
+              tuning: tuning === 'ukulele_standard' 
+                ? { $in: ['ukulele_standard', 'standard'] }
+                : tuning,
+              libraryType: 'main',
+            }
+          : { 
+              key: 'ZZ',
+              instrument: 'ukulele',
+              libraryType: 'main'
+            }, // Impossible condition when no key (ZZ is not a valid musical key)
+      },
+    },
+  });
+
+  if (!hasValidKey) {
+    return { data: { suffixes: [] }, error: null };
+  }
+
+  // Extract unique suffixes from chords
+  const chords = data?.chords || [];
+  const suffixSet = new Set();
+  chords.forEach(chord => {
+    // Normalize: treat empty string and 'major' as the same
+    const suffix = chord.suffix || '';
+    if (suffix === 'major') {
+      suffixSet.add(''); // Use empty string for major chords
+    } else if (suffix) {
+      suffixSet.add(suffix);
+    } else {
+      suffixSet.add(''); // Empty suffix
+    }
+  });
+
+  // Convert to sorted array
+  const suffixes = Array.from(suffixSet).sort((a, b) => {
+    // Sort empty/major first, then alphabetically
+    if (!a || a === '') return -1;
+    if (!b || b === '') return 1;
+    return a.localeCompare(b);
+  });
+
+  return { data: { suffixes }, error };
+}
