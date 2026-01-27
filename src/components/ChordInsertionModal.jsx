@@ -1,4 +1,5 @@
 import { useRef, useEffect } from 'react';
+import { useFixedStyleWithIOsKeyboard } from 'react-ios-keyboard-viewport';
 import ChordDiagram from './ChordDiagram';
 import { normalizeQuery } from '../utils/chord-autocomplete-helpers';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
@@ -28,6 +29,9 @@ export default function ChordInsertionModal({
   modalRef,
   searchInputRef,
 }) {
+  // Call hook at top level (before any early returns) - React Rules of Hooks
+  const { fixedCenter } = useFixedStyleWithIOsKeyboard();
+
   // Scroll selected item into view
   useEffect(() => {
     if (isOpen && modalRef.current) {
@@ -102,6 +106,7 @@ export default function ChordInsertionModal({
   return (
     <div 
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      style={fixedCenter} // Override positioning when iOS keyboard is open
       onClick={(e) => {
         // Close on backdrop click
         if (e.target === e.currentTarget) {

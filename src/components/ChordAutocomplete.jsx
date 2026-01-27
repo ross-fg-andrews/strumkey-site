@@ -19,6 +19,7 @@ export default function ChordAutocomplete({
   userId = null
 }) {
   const textareaRef = useRef(null);
+  const containerRef = useRef(null);
   const modalRef = useRef(null);
   const searchInputRef = useRef(null);
   const insertPositionRef = useRef(0);
@@ -374,7 +375,7 @@ export default function ChordAutocomplete({
   };
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <textarea
         ref={textareaRef}
         value={value}

@@ -176,6 +176,81 @@ function isPopularChord(chord) {
 }
 
 /**
+ * Get root note order for sorting common chords
+ * Returns a numeric value for sorting root notes in the desired order
+ * Order: C, C#, Db, D, D#, Eb, E, F, F#, Gb, G, G#, Ab, A, A#, Bb, B
+ */
+function getRootNoteOrder(chordName) {
+  const rootNote = extractRootNote(chordName);
+  if (!rootNote) return 99;
+  
+  const rootNoteMap = {
+    'C': 0,
+    'C#': 1,
+    'Db': 2,
+    'D': 3,
+    'D#': 4,
+    'Eb': 5,
+    'E': 6,
+    'F': 7,
+    'F#': 8,
+    'Gb': 9,
+    'G': 10,
+    'G#': 11,
+    'Ab': 12,
+    'A': 13,
+    'A#': 14,
+    'Bb': 15,
+    'B': 16,
+  };
+  
+  return rootNoteMap[rootNote] ?? 99;
+}
+
+/**
+ * Check if a chord is a common chord to show on initial load
+ * Common chords are: position 1, root notes C through B (with sharps/flats), 
+ * and suffixes: major (none), minor (m/min/minor), or dominant 7th (7)
+ */
+function isCommonChord(chord) {
+  // Must be position 1
+  if (chord.position !== 1) return false;
+  
+  // Extract root note
+  const rootNote = extractRootNote(chord.name);
+  if (!rootNote) return false;
+  
+  // Check if root note is in the common list (C through B with sharps/flats)
+  const commonRootNotes = ['C', 'C#', 'Db', 'D', 'D#', 'Eb', 'E', 'F', 'F#', 'Gb', 'G', 'G#', 'Ab', 'A', 'A#', 'Bb', 'B'];
+  if (!commonRootNotes.includes(rootNote)) return false;
+  
+  // Extract suffix (everything after the root note)
+  const name = chord.name.toLowerCase();
+  const rootNoteLower = rootNote.toLowerCase();
+  const suffix = name.substring(rootNoteLower.length).trim();
+  
+  // Check if suffix matches: empty (major), "m"/"min"/"minor" (minor), or standalone "7" (dominant 7th)
+  // Must be standalone "7" - not "m7", "maj7", "7sus4", etc.
+  if (!suffix || suffix.length === 0) {
+    // Major chord (no suffix)
+    return true;
+  }
+  
+  // Check for minor: "m", "min", or "minor" (but not "m7", "maj7", etc.)
+  if (suffix === 'm' || suffix === 'min' || suffix === 'minor' ||
+      /^m(\s|$)/.test(suffix) || /^min(\s|$)/.test(suffix) || /^minor(\s|$)/.test(suffix)) {
+    return true;
+  }
+  
+  // Check for dominant 7th: standalone "7" (not part of "11", "13", "m7", "maj7")
+  if (/^7(\s|$)/.test(suffix) || suffix === '7') {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
  * Sort chord groups by commonality
  * @param {Array} groups - Array of chord groups with name property
  * @param {string} searchQuery - Optional search query for exact match bonus
@@ -195,8 +270,8 @@ function sortChordGroups(groups, searchQuery = '') {
     if (exactMatchB && !exactMatchA) return 1;
     
     // First sort by root note
-    const rootA = getRootNoteValue(nameA);
-    const rootB = getRootNoteValue(nameB);
+    const rootA = getRootNoteOrder(nameA);
+    const rootB = getRootNoteOrder(nameB);
     if (rootA !== rootB) {
       return rootA - rootB;
     }
@@ -237,8 +312,8 @@ export default function ChordsPage() {
   // Filter chords by search query
   const filteredChords = useMemo(() => {
     if (!searchQuery.trim()) {
-      // When no search query, show popular chords only
-      return allChords.filter(chord => isPopularChord(chord));
+      // When no search query, show common chords only (position 1, major/minor/7th for C-B)
+      return allChords.filter(chord => isCommonChord(chord));
     }
     
     // Use smart filtering that excludes minor chords when searching for just root note
@@ -246,27 +321,67 @@ export default function ChordsPage() {
     return allChords.filter(chord => matchesRootQuery(chord.name, query));
   }, [allChords, searchQuery]);
   
-  // Group chords by name and sort
+  // Group chords by name (or root note when no search) and sort
   const allChordGroups = useMemo(() => {
-    // Group by chord name
-    const groupsMap = new Map();
+    // When no search query, group by root note; otherwise group by chord name
+    const groupByRootNote = !searchQuery.trim();
     
-    filteredChords.forEach(chord => {
-      const name = chord.name;
-      if (!groupsMap.has(name)) {
-        groupsMap.set(name, []);
-      }
-      groupsMap.get(name).push(chord);
-    });
-    
-    // Convert to array and sort chords within each group by position
-    const groups = Array.from(groupsMap.entries()).map(([name, chords]) => ({
-      name,
-      chords: chords.sort((a, b) => (a.position || 1) - (b.position || 1))
-    }));
-    
-    // Sort groups by commonality (pass search query for exact match bonus)
-    return sortChordGroups(groups, searchQuery);
+    if (groupByRootNote) {
+      // Group by root note for initial view
+      const groupsMap = new Map();
+      
+      filteredChords.forEach(chord => {
+        const rootNote = extractRootNote(chord.name);
+        if (!rootNote) return;
+        
+        if (!groupsMap.has(rootNote)) {
+          groupsMap.set(rootNote, []);
+        }
+        groupsMap.get(rootNote).push(chord);
+      });
+      
+      // Convert to array and sort chords within each root note group by suffix priority
+      const groups = Array.from(groupsMap.entries()).map(([rootNote, chords]) => ({
+        name: rootNote,
+        chords: chords.sort((a, b) => {
+          // Sort by suffix priority (major=0, 7th=1, minor=4)
+          const priorityA = getSuffixPriority(a.name);
+          const priorityB = getSuffixPriority(b.name);
+          if (priorityA !== priorityB) {
+            return priorityA - priorityB;
+          }
+          // If same priority, sort alphabetically
+          return a.name.localeCompare(b.name);
+        })
+      }));
+      
+      // Sort groups by root note order
+      return groups.sort((a, b) => {
+        const rootA = getRootNoteOrder(a.name);
+        const rootB = getRootNoteOrder(b.name);
+        return rootA - rootB;
+      });
+    } else {
+      // Group by chord name for search results
+      const groupsMap = new Map();
+      
+      filteredChords.forEach(chord => {
+        const name = chord.name;
+        if (!groupsMap.has(name)) {
+          groupsMap.set(name, []);
+        }
+        groupsMap.get(name).push(chord);
+      });
+      
+      // Convert to array and sort chords within each group by position
+      const groups = Array.from(groupsMap.entries()).map(([name, chords]) => ({
+        name,
+        chords: chords.sort((a, b) => (a.position || 1) - (b.position || 1))
+      }));
+      
+      // Sort groups by commonality (pass search query for exact match bonus)
+      return sortChordGroups(groups, searchQuery);
+    }
   }, [filteredChords, searchQuery]);
   
   // Reset groups to show when search query changes
@@ -313,7 +428,7 @@ export default function ChordsPage() {
         />
         {!searchQuery && (
           <p className="mt-2 text-sm text-gray-600">
-            Showing popular chords. Enter a chord name to see all variations.
+            Showing common chords (C through B, major/minor/7th, position 1). Enter a chord name to see all variations.
           </p>
         )}
         {searchQuery && allChordGroups.length > 0 && (
@@ -373,10 +488,12 @@ export default function ChordsPage() {
                         instrument={chord.instrument || DEFAULT_INSTRUMENT}
                         tuning={chord.tuning || DEFAULT_TUNING}
                       />
-                      {/* Position Label */}
-                      <span className="mt-2 text-sm text-gray-600">
-                        Position {chord.position || 1}
-                      </span>
+                      {/* Only show position label when searching (not in initial grouped view) */}
+                      {searchQuery && (
+                        <span className="mt-2 text-sm text-gray-600">
+                          Position {chord.position || 1}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
