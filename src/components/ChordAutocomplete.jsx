@@ -127,10 +127,11 @@ export default function ChordAutocomplete({
         const selectedChord = allFiltered[chordIndex];
         const chordName = selectedChord.name || selectedChord;
         const chordPosition = selectedChord.position;
+        const chordId = selectedChord.id || null;
         if (chordPosition) {
           handleChordPositionSelect(chordName, chordPosition);
         }
-        insertChord(chordName);
+        insertChord(chordName, chordPosition || null, chordId);
       }
     }
   };
@@ -171,7 +172,7 @@ export default function ChordAutocomplete({
     // The modal stays open until user explicitly closes it or inserts
   };
 
-  const insertChord = (chordName, explicitPosition = null) => {
+  const insertChord = (chordName, explicitPosition = null, explicitChordId = null) => {
     const textarea = textareaRef.current;
     if (!textarea) return;
 
@@ -235,6 +236,9 @@ export default function ChordAutocomplete({
     const chordData = getChordData(chordName);
     let chordPosition = explicitPosition !== null ? explicitPosition : (storedPosition || chordData?.position || 1);
     
+    // Get chordId: explicitChordId > chordData.id > null
+    const chordId = explicitChordId || chordData?.id || null;
+    
     // Ensure position is stored
     if (chordPosition && chordPosition > 1) {
       setSelectedPositions(prev => {
@@ -245,7 +249,13 @@ export default function ChordAutocomplete({
     }
 
     // Format chord with position suffix if position > 1: [C:2], otherwise just [C]
-    const chordText = chordPosition > 1 ? `${chordName}:${chordPosition}` : chordName;
+    // Include chordId in format if available: [C:2:abc123] or [C::abc123]
+    // This allows the ID to be parsed and stored when saving, but we keep text readable
+    let chordText = chordPosition > 1 ? `${chordName}:${chordPosition}` : chordName;
+    if (chordId) {
+      // Include ID in format: [C:2:abc123] or [C::abc123] (if position is 1)
+      chordText = chordPosition > 1 ? `${chordName}:${chordPosition}:${chordId}` : `${chordName}::${chordId}`;
+    }
     const newText = before + spaceBefore + `[${chordText}]` + spaceAfter + after;
     onChange({ target: { value: newText } });
 
@@ -260,15 +270,15 @@ export default function ChordAutocomplete({
     setQuery('');
   };
 
-  const handleChordClick = (chordName, chordPosition = null) => {
+  const handleChordClick = (chordName, chordPosition = null, chordId = null) => {
     // If position is provided, use it; otherwise get from chord data
     if (chordPosition !== null && chordPosition !== undefined) {
       // Store the position for this chord
       handleChordPositionSelect(chordName, chordPosition);
-      // Pass position directly to insertChord to avoid state timing issues
-      insertChord(chordName, chordPosition);
+      // Pass position and ID directly to insertChord to avoid state timing issues
+      insertChord(chordName, chordPosition, chordId);
     } else {
-      insertChord(chordName);
+      insertChord(chordName, null, chordId);
     }
   };
 
@@ -439,8 +449,8 @@ export default function ChordAutocomplete({
       <ChordVariationsModal
         isOpen={showVariationsModal}
         onClose={() => setShowVariationsModal(false)}
-        onSelectChord={(chordName, chordPosition) => {
-          handleChordClick(chordName, chordPosition);
+        onSelectChord={(chordName, chordPosition, chordId) => {
+          handleChordClick(chordName, chordPosition, chordId);
         }}
         chords={allChordVariations}
         initialQuery={query}

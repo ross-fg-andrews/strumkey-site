@@ -137,8 +137,8 @@ export default function ChordVariationsModal({
     });
   }, [availableFilteredNames, getVariationsForName]);
   
-  const handleChordClick = (chordName, chordPosition = null) => {
-    onSelectChord(chordName, chordPosition);
+  const handleChordClick = (chordName, chordPosition = null, chordId = null) => {
+    onSelectChord(chordName, chordPosition, chordId);
     onClose();
   };
   
@@ -218,7 +218,7 @@ export default function ChordVariationsModal({
                       <button
                         key={`used-${chordName}-${chordFrets || 'no-frets'}-${index}`}
                         type="button"
-                        onClick={() => handleChordClick(chordName, chordObj.position)}
+                        onClick={() => handleChordClick(chordName, chordObj.position, chordObj.id || null)}
                         className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3"
                       >
                         {chordFrets && (
@@ -268,7 +268,7 @@ export default function ChordVariationsModal({
                       <button
                         key={`available-${chordName}-${chordFrets || 'no-frets'}-${index}-${chordObj.source || 'unknown'}`}
                         type="button"
-                        onClick={() => handleChordClick(chordName, chordObj.position)}
+                        onClick={() => handleChordClick(chordName, chordObj.position, chordObj.id || null)}
                         className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3"
                       >
                         {chordFrets && (

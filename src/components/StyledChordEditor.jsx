@@ -153,8 +153,9 @@ export default function StyledChordEditor({
         const selectedChord = allFiltered[chordIndex];
         const chordName = selectedChord.name || selectedChord;
         const chordPosition = selectedChord.position;
-        // Pass position directly to insertChord to avoid state timing issues
-        insertChord(chordName, chordPosition || null);
+        const chordId = selectedChord.id || null;
+        // Pass position and ID directly to insertChord to avoid state timing issues
+        insertChord(chordName, chordPosition || null, chordId);
       }
     }
   };
@@ -164,6 +165,7 @@ export default function StyledChordEditor({
   // display format (e.g. "Bm") can differ from stored (e.g. "Bminor"), causing cursor drift.
   const getChordMarkerLength = (chordSpan) => {
     const dataName = chordSpan.getAttribute('data-chord-name');
+    const chordId = chordSpan.getAttribute('data-chord-id');
     if (dataName) {
       const childSpans = chordSpan.querySelectorAll('span');
       let chordPosition = null;
@@ -171,7 +173,14 @@ export default function StyledChordEditor({
         const positionNum = parseInt(childSpans[1].textContent.trim(), 10);
         if (!isNaN(positionNum) && positionNum > 1) chordPosition = positionNum;
       }
-      return chordPosition ? `[${dataName}:${chordPosition}]`.length : `[${dataName}]`.length;
+      // Calculate length including ID if present: [C:2:abc123] or [C::abc123] or [C:2] or [C]
+      if (chordId) {
+        return chordPosition
+          ? `[${dataName}:${chordPosition}:${chordId}]`.length
+          : `[${dataName}::${chordId}]`.length;
+      } else {
+        return chordPosition ? `[${dataName}:${chordPosition}]`.length : `[${dataName}]`.length;
+      }
     }
     const childSpans = chordSpan.querySelectorAll('span');
     let chordName = '';
@@ -558,10 +567,12 @@ export default function StyledChordEditor({
             // This is a styled chord span
             // Extract original chord name from data attribute (preserves stored value)
             // Extract position from child spans
+            // Extract chordId from data attribute if present
             // Structure: span[data-chord] > span (chord name) + span (position indicator, optional)
             const childSpans = child.querySelectorAll('span');
             let chordName = child.getAttribute('data-chord-name') || ''; // Use stored original name
             let chordPosition = null;
+            const chordId = child.getAttribute('data-chord-id'); // Get chord ID if present
             
             // If data attribute is missing, fall back to reading from display (for backward compatibility)
             if (!chordName) {
@@ -583,10 +594,18 @@ export default function StyledChordEditor({
               }
             }
             
-            // Reconstruct chord marker with position if present
-            const chordMarker = chordPosition 
-              ? `[${chordName}:${chordPosition}]` 
-              : `[${chordName}]`;
+            // Reconstruct chord marker with position and ID if present
+            // Format: [C:2:abc123] or [C::abc123] or [C:2] or [C]
+            let chordMarker;
+            if (chordId) {
+              chordMarker = chordPosition
+                ? `[${chordName}:${chordPosition}:${chordId}]`
+                : `[${chordName}::${chordId}]`;
+            } else {
+              chordMarker = chordPosition 
+                ? `[${chordName}:${chordPosition}]` 
+                : `[${chordName}]`;
+            }
             text += chordMarker;
           } else if (child.tagName === 'DIV' || child.tagName === 'P') {
             // Block elements represent line breaks in contenteditable
@@ -665,18 +684,37 @@ export default function StyledChordEditor({
           // This is a chord
           const chordText = part.slice(1, -1); // Remove brackets
           
-          // Parse position from chord name format: "C:2" -> chord "C", position 2
-          const positionMatch = chordText.match(/^(.+):(\d+)$/);
-          const chordName = positionMatch ? positionMatch[1].trim() : chordText;
-          const chordPosition = positionMatch ? parseInt(positionMatch[2], 10) : 1;
+          // Parse chord format: "C:2:abc123" or "C::abc123" or "C:2" or "C"
+          let chordName = chordText;
+          let chordPosition = 1;
+          let chordId = null;
+          
+          // Try to match format with ID: "C:2:abc123" or "C::abc123"
+          const idMatch = chordText.match(/^(.+?):(\d*):(.+)$/);
+          if (idMatch) {
+            chordName = idMatch[1].trim();
+            const positionStr = idMatch[2];
+            chordId = idMatch[3].trim();
+            chordPosition = positionStr ? parseInt(positionStr, 10) || 1 : 1;
+          } else {
+            // Try to match format without ID: "C:2" or "C"
+            const positionMatch = chordText.match(/^(.+):(\d+)$/);
+            if (positionMatch) {
+              chordName = positionMatch[1].trim();
+              chordPosition = parseInt(positionMatch[2], 10) || 1;
+            }
+          }
           
           const span = document.createElement('span');
           span.className = 'inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium';
           span.setAttribute('data-chord', 'true');
           span.setAttribute('data-chord-name', chordName); // Store original chord name for reconstruction
+          if (chordId) {
+            span.setAttribute('data-chord-id', chordId); // Store chord ID for reconstruction
+          }
           span.setAttribute('contenteditable', 'false'); // Prevent editing within chord spans
           
-          // Add chord name text (formatted for display)
+          // Add chord name text (formatted for display) - DO NOT include ID in display
           const chordNameSpan = document.createElement('span');
           chordNameSpan.textContent = formatChordNameForDisplay(chordName);
           span.appendChild(chordNameSpan);
@@ -831,7 +869,7 @@ export default function StyledChordEditor({
     onChange({ target: { value: text } });
   };
 
-  const insertChord = (chordName, explicitPosition = null) => {
+  const insertChord = (chordName, explicitPosition = null, explicitChordId = null) => {
     if (!editorRef.current) return;
     
     // Get text directly from editor to ensure we have the most current value
@@ -879,13 +917,22 @@ export default function StyledChordEditor({
     const chordData = getChordData(chordName);
     let chordPosition = explicitPosition !== null ? explicitPosition : (storedPosition || chordData?.position || 1);
     
+    // Get chordId: explicitChordId > chordData.id > null
+    const chordId = explicitChordId || chordData?.id || null;
+    
     // Ensure position is stored
     if (chordPosition && chordPosition > 1) {
       handleChordPositionSelect(chordName, chordPosition);
     }
 
     // Format chord with position suffix if position > 1: [C:2], otherwise just [C]
-    const chordText = chordPosition > 1 ? `${chordName}:${chordPosition}` : chordName;
+    // Include chordId in format if available: [C:2:abc123] or [C::abc123]
+    // This allows the ID to be parsed and stored when saving, but we keep text readable
+    let chordText = chordPosition > 1 ? `${chordName}:${chordPosition}` : chordName;
+    if (chordId) {
+      // Include ID in format: [C:2:abc123] or [C::abc123] (if position is 1)
+      chordText = chordPosition > 1 ? `${chordName}:${chordPosition}:${chordId}` : `${chordName}::${chordId}`;
+    }
     const newText = before + spaceBefore + `[${chordText}]` + spaceAfter + after;
     
     // Update DOM directly and skip sync to prevent re-render interference
@@ -915,16 +962,16 @@ export default function StyledChordEditor({
     setQuery('');
   };
 
-  const handleChordClick = (chordName, chordPosition = null) => {
+  const handleChordClick = (chordName, chordPosition = null, chordId = null) => {
     if (!chordName) return;
     // If position is provided, use it; otherwise get from chord data
     if (chordPosition !== null && chordPosition !== undefined) {
       // Store the position for this chord
       handleChordPositionSelect(chordName, chordPosition);
-      // Pass position directly to insertChord to avoid state timing issues
-      insertChord(chordName, chordPosition);
+      // Pass position and ID directly to insertChord to avoid state timing issues
+      insertChord(chordName, chordPosition, chordId);
     } else {
-      insertChord(chordName);
+      insertChord(chordName, null, chordId);
     }
   };
 
@@ -1091,8 +1138,8 @@ export default function StyledChordEditor({
       <ChordVariationsModal
         isOpen={showVariationsModal}
         onClose={() => setShowVariationsModal(false)}
-        onSelectChord={(chordName, chordPosition) => {
-          handleChordClick(chordName, chordPosition);
+        onSelectChord={(chordName, chordPosition, chordId) => {
+          handleChordClick(chordName, chordPosition, chordId);
         }}
         chords={allChordVariations}
         initialQuery={query}

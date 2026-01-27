@@ -16,6 +16,7 @@
  * @param {Object} options - Additional options
  * @param {Array} options.databaseChords - Array of database chord objects (main + personal)
  * @param {Array} options.embeddedChords - Array of embedded chord objects from song
+ * @param {string|null} chordId - Optional chord ID for direct lookup (fastest, most reliable)
  * @returns {Object|null} Chord data object or null if not found
  */
 export function findChord(
@@ -23,11 +24,18 @@ export function findChord(
   instrument = 'ukulele', 
   tuning = 'ukulele_standard', 
   positionOrVariation = 1,
-  options = {}
+  options = {},
+  chordId = null
 ) {
   if (!chordName) return null;
   
   const { databaseChords = [], embeddedChords = [] } = options;
+  
+  // If chordId provided, use it directly (fastest, most reliable)
+  if (chordId && databaseChords.length > 0) {
+    const chord = databaseChords.find(c => c.id === chordId);
+    if (chord) return chord;
+  }
   
   // Convert legacy variation string to position number (backward compatibility)
   let position = positionOrVariation;

@@ -25,15 +25,27 @@ export function parseLyricsWithChords(text) {
       // Trim chord name to remove any leading/trailing whitespace
       const trimmedChordName = chordName.trim();
       
-      // Parse position from chord name format: "C:2" -> chord "C", position 2
+      // Parse chord format: "C:2:abc123" or "C::abc123" or "C:2" or "C"
+      // Format: [name:position:chordId] or [name::chordId] or [name:position] or [name]
       // Default to position 1 if no position specified
       let actualChordName = trimmedChordName;
       let chordPosition = 1;
+      let extractedChordId = null;
       
-      const positionMatch = trimmedChordName.match(/^(.+):(\d+)$/);
-      if (positionMatch) {
-        actualChordName = positionMatch[1].trim();
-        chordPosition = parseInt(positionMatch[2], 10) || 1;
+      // Try to match format with ID: "C:2:abc123" or "C::abc123"
+      const idMatch = trimmedChordName.match(/^(.+?):(\d*):(.+)$/);
+      if (idMatch) {
+        actualChordName = idMatch[1].trim();
+        const positionStr = idMatch[2];
+        extractedChordId = idMatch[3].trim();
+        chordPosition = positionStr ? parseInt(positionStr, 10) || 1 : 1;
+      } else {
+        // Try to match format without ID: "C:2" or "C"
+        const positionMatch = trimmedChordName.match(/^(.+):(\d+)$/);
+        if (positionMatch) {
+          actualChordName = positionMatch[1].trim();
+          chordPosition = parseInt(positionMatch[2], 10) || 1;
+        }
       }
       
       chords.push({
@@ -42,6 +54,7 @@ export function parseLyricsWithChords(text) {
         position,
         chord: actualChordName,
         chordPosition: chordPosition, // Store the position from the chord name
+        chordId: extractedChordId || null, // Store the chord ID if present
       });
       removedLength += matchStr.length; // Track how much we've removed
       return ''; // Remove chord marker from text
@@ -81,15 +94,23 @@ export function renderInlineChords(lyrics, chords = []) {
     let result = [];
     let lastIndex = 0;
 
-    lineChords.forEach(({ position, chord, chordPosition }) => {
+    lineChords.forEach(({ position, chord, chordPosition, chordId }) => {
       // Add text before chord
       if (position > lastIndex) {
         result.push(line.substring(lastIndex, position));
       }
       // Add chord marker with position if chordPosition > 1
-      const chordMarker = chordPosition && chordPosition > 1 
-        ? `[${chord}:${chordPosition}]` 
-        : `[${chord}]`;
+      // Include chordId if available: [C:2:abc123] or [C::abc123]
+      let chordMarker;
+      if (chordId) {
+        chordMarker = chordPosition && chordPosition > 1
+          ? `[${chord}:${chordPosition}:${chordId}]`
+          : `[${chord}::${chordId}]`;
+      } else {
+        chordMarker = chordPosition && chordPosition > 1 
+          ? `[${chord}:${chordPosition}]` 
+          : `[${chord}]`;
+      }
       result.push(chordMarker);
       lastIndex = position;
     });
