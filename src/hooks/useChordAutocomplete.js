@@ -135,13 +135,24 @@ export function useChordAutocomplete({
   // Expand filtered names into chord entries (only the specific position used)
   const usedFiltered = useMemo(() => {
     return usedFilteredNames.map(chordText => {
-      // Parse position from chord text: "C7:2" -> chord "C7", position 2; "C7" -> chord "C7", position 1
+      // Parse chord format: "C:2:abc123" or "C::abc123" or "C:2" or "C"
+      // Note: extractUsedChords should have already stripped IDs, but handle defensively
       let actualChordName = chordText;
       let chordPosition = 1;
-      const positionMatch = chordText.match(/^(.+):(\d+)$/);
-      if (positionMatch) {
-        actualChordName = positionMatch[1].trim();
-        chordPosition = parseInt(positionMatch[2], 10) || 1;
+      
+      // Try to match format with ID: "C:2:abc123" or "C::abc123"
+      const idMatch = chordText.match(/^(.+?):(\d*):(.+)$/);
+      if (idMatch) {
+        actualChordName = idMatch[1].trim();
+        const positionStr = idMatch[2];
+        chordPosition = positionStr ? parseInt(positionStr, 10) || 1 : 1;
+      } else {
+        // Try to match format without ID: "C:2" or "C"
+        const positionMatch = chordText.match(/^(.+):(\d+)$/);
+        if (positionMatch) {
+          actualChordName = positionMatch[1].trim();
+          chordPosition = parseInt(positionMatch[2], 10) || 1;
+        }
       }
       
       // Find the specific variation with this position
