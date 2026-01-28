@@ -894,3 +894,37 @@ export async function recordSongPlay(songId, userId) {
     })
   );
 }
+
+/**
+ * Update a single chord's position
+ * @param {string} chordId - Chord ID
+ * @param {number} newPosition - New position number
+ * @returns {Promise} Transaction promise
+ */
+export async function updateChordPosition(chordId, newPosition, libraryType = 'main') {
+  return db.transact(
+    db.tx.chords[chordId].update({
+      position: newPosition,
+      libraryType: libraryType, // Include libraryType so permission check can evaluate it
+    })
+  );
+}
+
+/**
+ * Batch update multiple chord positions
+ * @param {Array<{chordId: string, position: number}>} chordUpdates - Array of {chordId, position} objects
+ * @returns {Promise} Transaction promise
+ */
+export async function updateChordPositions(chordUpdates) {
+  if (!chordUpdates || chordUpdates.length === 0) {
+    return Promise.resolve();
+  }
+
+  return db.transact(
+    chordUpdates.map(({ chordId, position }) =>
+      db.tx.chords[chordId].update({
+        position,
+      })
+    )
+  );
+}

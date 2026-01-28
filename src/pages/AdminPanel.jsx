@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { db } from '../db/schema';
 import { createInvite } from '../db/mutations';
 import { useWaitingList, useInvites } from '../db/queries';
+import ChordVoicingManager from '../components/ChordVoicingManager';
 
 export default function AdminPanel() {
   const { user: authUser, isAuthenticated } = useAuth();
@@ -248,9 +249,7 @@ export default function AdminPanel() {
       )}
 
       {activeTab === 'chords' && (
-        <div>
-          {/* Chords tab content will go here */}
-        </div>
+        <ChordVoicingManager />
       )}
     </div>
   );
