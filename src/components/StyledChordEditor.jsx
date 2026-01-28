@@ -326,9 +326,11 @@ export default function StyledChordEditor({
             }
             position += 1;
           } else if (child.hasAttribute('data-chord')) {
-            // Chord span - counts as [ChordName] or [ChordName:Position]
+            // Chord span - counts as [ChordName] or [ChordName:Position] or [ChordName::id] or [ChordName:Position:id]
+            // Must match the logic in getTextFromEditor to ensure consistent position calculations
             const childSpans = child.querySelectorAll('span');
             let chordName = child.getAttribute('data-chord-name') || '';
+            const chordId = child.getAttribute('data-chord-id'); // Get chord ID if present
             
             if (!chordName) {
               if (childSpans.length > 0) {
@@ -347,9 +349,18 @@ export default function StyledChordEditor({
               }
             }
             
-            const chordMarker = chordPosition 
-              ? `[${chordName}:${chordPosition}]` 
-              : `[${chordName}]`;
+            // Reconstruct chord marker with position and ID if present (matching getTextFromEditor logic)
+            // Format: [C:2:abc123] or [C::abc123] or [C:2] or [C]
+            let chordMarker;
+            if (chordId) {
+              chordMarker = chordPosition
+                ? `[${chordName}:${chordPosition}:${chordId}]`
+                : `[${chordName}::${chordId}]`;
+            } else {
+              chordMarker = chordPosition 
+                ? `[${chordName}:${chordPosition}]` 
+                : `[${chordName}]`;
+            }
             
             // Check if cursor is within or after this chord
             if (child.contains(targetNode) || child === targetNode) {
@@ -677,14 +688,17 @@ export default function StyledChordEditor({
       }
       
       // Regular line - parse for chords
+      // Regex matches chord markers: [C], [C:2], [C::id], [C:2:id]
+      // The pattern [^\]]+ matches one or more characters that are not ], which correctly handles IDs
       const parts = line.split(/(\[[^\]]+\])/);
       
       parts.forEach((part) => {
         if (part.match(/^\[([^\]]+)\]$/)) {
-          // This is a chord
+          // This is a chord marker - extract and parse it
           const chordText = part.slice(1, -1); // Remove brackets
           
           // Parse chord format: "C:2:abc123" or "C::abc123" or "C:2" or "C"
+          // Defensive parsing ensures IDs are extracted but never displayed
           let chordName = chordText;
           let chordPosition = 1;
           let chordId = null;

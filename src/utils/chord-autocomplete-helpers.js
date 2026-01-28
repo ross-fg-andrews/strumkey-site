@@ -1,5 +1,7 @@
 /**
  * Extract unique chords from lyrics text that are in [ChordName] format
+ * Parses chord markers to extract chord name and position, excluding ChordIDs
+ * Handles formats: [C], [C:2], [C::id], [C:2:id]
  */
 export function extractUsedChords(lyricsText) {
   if (!lyricsText) return [];
@@ -9,10 +11,31 @@ export function extractUsedChords(lyricsText) {
   const chordSet = new Set();
   
   matches.forEach(match => {
-    const chordName = match[1].trim();
-    if (chordName) {
-      chordSet.add(chordName);
+    const chordText = match[1].trim();
+    if (!chordText) return;
+    
+    // Parse chord format: "C:2:abc123" or "C::abc123" or "C:2" or "C"
+    let chordName = chordText;
+    let chordPosition = 1;
+    
+    // Try to match format with ID: "C:2:abc123" or "C::abc123"
+    const idMatch = chordText.match(/^(.+?):(\d*):(.+)$/);
+    if (idMatch) {
+      chordName = idMatch[1].trim();
+      const positionStr = idMatch[2];
+      chordPosition = positionStr ? parseInt(positionStr, 10) || 1 : 1;
+    } else {
+      // Try to match format without ID: "C:2" or "C"
+      const positionMatch = chordText.match(/^(.+):(\d+)$/);
+      if (positionMatch) {
+        chordName = positionMatch[1].trim();
+        chordPosition = parseInt(positionMatch[2], 10) || 1;
+      }
     }
+    
+    // Store chord name with position if position > 1, otherwise just the name
+    const chordKey = chordPosition > 1 ? `${chordName}:${chordPosition}` : chordName;
+    chordSet.add(chordKey);
   });
   
   return Array.from(chordSet).sort();
