@@ -51,6 +51,8 @@ export default function StyledChordEditor({
   const searchInputRef = useRef(null);
   const skipSyncRef = useRef(false);
   const insertPositionRef = useRef(0);
+  const inputDebounceTimerRef = useRef(null);
+  const justHandledEnterRef = useRef(false);
   const [isFocused, setIsFocused] = useState(false);
 
   // Use shared autocomplete hook
@@ -580,10 +582,12 @@ export default function StyledChordEditor({
             // Extract position from child spans
             // Extract chordId from data attribute if present
             // Structure: span[data-chord] > span (chord name) + span (position indicator, optional)
-            const childSpans = child.querySelectorAll('span');
             let chordName = child.getAttribute('data-chord-name') || ''; // Use stored original name
             let chordPosition = null;
             const chordId = child.getAttribute('data-chord-id'); // Get chord ID if present
+            
+            // Use children instead of querySelectorAll for better performance
+            const childSpans = child.children;
             
             // If data attribute is missing, fall back to reading from display (for backward compatibility)
             if (!chordName) {
@@ -596,7 +600,7 @@ export default function StyledChordEditor({
               }
             }
             
-            // Extract position from child spans
+            // Extract position from child spans (always check, as position isn't stored in data attribute)
             if (childSpans.length > 1) {
               const positionText = childSpans[1].textContent.trim();
               const positionNum = parseInt(positionText, 10);
@@ -854,26 +858,43 @@ export default function StyledChordEditor({
         // Intercept Enter key to prevent browser from creating DIV/P elements
         // Instead, manually insert a line break
         e.preventDefault();
+        e.stopPropagation();
         if (editorRef.current) {
-          const currentText = getTextFromEditor();
-          const cursorPos = getCursorPosition();
-          
-          // Insert newline at cursor position
-          const before = currentText.substring(0, cursorPos);
-          const after = currentText.substring(cursorPos);
-          const newText = before + '\n' + after;
-          
-          // Update DOM directly and skip sync to prevent re-render interference
+          // Set flags BEFORE any DOM manipulation to prevent interference
+          // This ensures handleInput and sync effect see the flags immediately
+          justHandledEnterRef.current = true;
           skipSyncRef.current = true;
-          updateEditorContent(newText);
-          lastValueRef.current = newText;
-          onChange({ target: { value: newText } });
           
-          // Restore cursor position after the newline
+          const selection = window.getSelection();
+          if (selection.rangeCount === 0) {
+            justHandledEnterRef.current = false;
+            skipSyncRef.current = false;
+            return;
+          }
+          
+          const range = selection.getRangeAt(0);
+          const br = document.createElement('br');
+          
+          // Insert BR at cursor position
+          range.deleteContents();
+          range.insertNode(br);
+          
+          // Move cursor after the BR
+          range.setStartAfter(br);
+          range.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          
+          // Update the text value by reading from DOM
+          const text = getTextFromEditor();
+          lastValueRef.current = text;
+          onChange({ target: { value: text } });
+          
+          // Reset flags after a brief delay to allow any pending events to be ignored
           setTimeout(() => {
-            setCursorPosition(cursorPos + 1);
-            editorRef.current?.focus();
-          }, 0);
+            justHandledEnterRef.current = false;
+            skipSyncRef.current = false;
+          }, 100);
         }
       } else if (e.key === '/' && !e.shiftKey) {
         e.preventDefault();
@@ -901,53 +922,92 @@ export default function StyledChordEditor({
   };
 
   const handleInput = (e) => {
-    // Update data attributes for headings and instructions when their content changes
-    if (editorRef.current) {
-      const headingElements = editorRef.current.querySelectorAll('[data-heading]');
-      headingElements.forEach((el) => {
-        const text = el.textContent.trim();
-        el.setAttribute('data-heading-text', text);
-      });
-      
-      const instructionElements = editorRef.current.querySelectorAll('[data-instruction]');
-      instructionElements.forEach((el) => {
-        const text = el.textContent.trim();
-        el.setAttribute('data-instruction-text', text);
-      });
-      
-      // Normalize any DIV/P elements (except headings/instructions) to BR tags
-      // This prevents accumulation of block elements that cause extra empty lines
-      const blockElements = editorRef.current.querySelectorAll('div, p');
-      blockElements.forEach((el) => {
-        // Skip headings and instructions - they should remain as block elements
-        if (el.hasAttribute('data-heading') || el.hasAttribute('data-instruction')) {
-          return;
-        }
-        
-        // Check if the block element is empty (only whitespace/zero-width spaces)
-        const blockText = el.textContent.replace(/\u200B/g, '').trim();
-        const isEmpty = blockText === '' && el.children.length === 0;
-        
-        if (isEmpty) {
-          // Replace empty DIV/P with BR tag
-          const br = document.createElement('br');
-          el.parentNode?.replaceChild(br, el);
-        } else {
-          // For DIV/P with content, move content out and replace with BR
-          // This handles cases where content was pasted into a DIV/P
-          const fragment = document.createDocumentFragment();
-          while (el.firstChild) {
-            fragment.appendChild(el.firstChild);
-          }
-          const br = document.createElement('br');
-          el.parentNode?.replaceChild(br, el);
-          br.parentNode?.insertBefore(fragment, br.nextSibling);
-        }
-      });
+    // Skip processing entirely if we just handled Enter programmatically
+    // The Enter handler already updated the DOM and called onChange
+    if (justHandledEnterRef.current) {
+      return;
     }
     
-    const text = getTextFromEditor();
-    onChange({ target: { value: text } });
+    // Update data attributes for headings and instructions when their content changes
+    // Only do this if headings/instructions might exist (optimization)
+    if (editorRef.current) {
+      // Use a single query to check for both headings and instructions
+      const specialElements = editorRef.current.querySelectorAll('[data-heading], [data-instruction]');
+      if (specialElements.length > 0) {
+        specialElements.forEach((el) => {
+          const text = el.textContent.trim();
+          if (el.hasAttribute('data-heading')) {
+            el.setAttribute('data-heading-text', text);
+          } else if (el.hasAttribute('data-instruction')) {
+            el.setAttribute('data-instruction-text', text);
+          }
+        });
+      }
+      
+      // Normalize DIV/P elements only when they exist (most of the time they won't)
+      // Use a single efficient query
+      const blockElements = editorRef.current.querySelectorAll('div:not([data-heading]):not([data-instruction]), p:not([data-heading]):not([data-instruction])');
+      
+      if (blockElements.length > 0) {
+        // Convert to array once and process
+        Array.from(blockElements).forEach((el) => {
+          // Skip if element is no longer in the DOM (might have been removed by previous normalization)
+          if (!el.parentNode) {
+            return;
+          }
+          
+          // Check if the block element is empty (only whitespace/zero-width spaces)
+          const blockText = el.textContent.replace(/\u200B/g, '').trim();
+          const isEmpty = blockText === '' && el.children.length === 0;
+          
+          if (isEmpty) {
+            // Replace empty DIV/P with BR tag
+            const br = document.createElement('br');
+            el.parentNode?.replaceChild(br, el);
+          } else {
+            // For DIV/P with content, move content out and replace with BR
+            // This handles cases where content was pasted into a DIV/P
+            const fragment = document.createDocumentFragment();
+            while (el.firstChild) {
+              fragment.appendChild(el.firstChild);
+            }
+            const br = document.createElement('br');
+            const parent = el.parentNode;
+            const nextSibling = el.nextSibling;
+            parent?.replaceChild(br, el);
+            if (fragment.hasChildNodes()) {
+              // Insert fragment after BR, or append if BR is last
+              if (nextSibling) {
+                parent?.insertBefore(fragment, nextSibling);
+              } else {
+                parent?.appendChild(fragment);
+              }
+            }
+          }
+        });
+      }
+    }
+    
+    // Always process input events for normal typing
+    // The skipSyncRef is only for the sync effect, not for blocking input handling
+    // We always need to capture user typing, but we can optimize the DOM read
+    
+    // Clear any existing timer
+    if (inputDebounceTimerRef.current) {
+      clearTimeout(inputDebounceTimerRef.current);
+    }
+    
+    // Use a very short debounce (0ms) to batch rapid keystrokes
+    // This ensures we read the DOM after all synchronous DOM modifications (like normalization) are complete
+    inputDebounceTimerRef.current = setTimeout(() => {
+      const text = getTextFromEditor();
+      // Only call onChange if text actually changed (avoid unnecessary re-renders)
+      if (text !== lastValueRef.current) {
+        lastValueRef.current = text;
+        onChange({ target: { value: text } });
+      }
+      inputDebounceTimerRef.current = null;
+    }, 0);
   };
 
   const insertChord = (chordName, explicitPosition = null, explicitChordId = null) => {
@@ -971,11 +1031,24 @@ export default function StyledChordEditor({
       'text around pos:', JSON.stringify(currentText.substring(Math.max(0, insertPos - 3), Math.min(currentText.length, insertPos + 3))));
     
     // Split text at insertion point (like textarea: text.substring(0, selectionStart) + chord + text.substring(selectionStart))
-    const before = currentText.substring(0, insertPos);
-    const after = currentText.substring(insertPos);
+    let before = currentText.substring(0, insertPos);
+    let after = currentText.substring(insertPos);
 
     const charBefore = before.length > 0 ? before[before.length - 1] : null;
     const charAfter = after.length > 0 ? after[0] : null;
+    
+    // Special handling: if we're inserting at the start of an empty line.
+    // Empty lines are represented as consecutive newlines (\n\n).
+    // Problem: If cursor position is detected as right after the second \n (before="line1\n\n", after="line2"),
+    // inserting creates "line1\n\n[C]line2" which when processed creates an extra empty line.
+    // Solution: If before ends with \n\n, we're probably at the wrong position. Adjust to right after first \n.
+    let positionAdjustment = 0;
+    if (charBefore === '\n' && before.length >= 2 && before[before.length - 2] === '\n') {
+      // We have \n\n before us - adjust to be right after the first \n instead
+      before = before.slice(0, -1); // Remove the second \n from before
+      after = '\n' + after; // Add it to the start of after
+      positionAdjustment = -1; // We moved back one character
+    }
     
     const isAlphanumeric = (char) => char && /[a-zA-Z0-9]/.test(char);
     const isWithinWord = isAlphanumeric(charBefore) && isAlphanumeric(charAfter);
@@ -1023,7 +1096,8 @@ export default function StyledChordEditor({
     onChange({ target: { value: newText } });
 
     // Calculate cursor position for after the inserted chord
-    const newCursorPos = insertPos + spaceBefore.length + chordText.length + 2 + spaceAfter.length;
+    // Adjust for empty line start fix (we may have moved the insertion point back)
+    const newCursorPos = insertPos + positionAdjustment + spaceBefore.length + chordText.length + 2 + spaceAfter.length;
     
     // Use double requestAnimationFrame for iOS Safari compatibility
     // iOS needs the first frame for DOM update, second frame for cursor rendering
