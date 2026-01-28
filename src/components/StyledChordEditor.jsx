@@ -620,15 +620,27 @@ export default function StyledChordEditor({
             text += chordMarker;
           } else if (child.tagName === 'DIV' || child.tagName === 'P') {
             // Block elements represent line breaks in contenteditable
-            // Add newline before this block element (if there's already content)
-            if (text.length > 0 && !text.endsWith('\n')) {
-              text += '\n';
-            }
-            // Recursively traverse element children
-            traverse(child);
-            // Add newline after this block element (if not the last child)
-            if (i < node.childNodes.length - 1) {
-              text += '\n';
+            // Check if this is an empty block element (only whitespace/zero-width spaces)
+            const blockText = child.textContent.replace(/\u200B/g, '').trim();
+            const isEmpty = blockText === '' && child.children.length === 0;
+            
+            if (isEmpty) {
+              // Empty DIV/P should be treated as a single line break
+              // Add newline only if there's already content and we don't already have a newline
+              if (text.length > 0 && !text.endsWith('\n')) {
+                text += '\n';
+              }
+            } else {
+              // Block element with content - add newline before (if there's already content)
+              if (text.length > 0 && !text.endsWith('\n')) {
+                text += '\n';
+              }
+              // Recursively traverse element children
+              traverse(child);
+              // Add newline after this block element (if not the last child)
+              if (i < node.childNodes.length - 1) {
+                text += '\n';
+              }
             }
           } else {
             // Recursively traverse element children
@@ -838,6 +850,31 @@ export default function StyledChordEditor({
             return;
           }
         }
+      } else if (e.key === 'Enter') {
+        // Intercept Enter key to prevent browser from creating DIV/P elements
+        // Instead, manually insert a line break
+        e.preventDefault();
+        if (editorRef.current) {
+          const currentText = getTextFromEditor();
+          const cursorPos = getCursorPosition();
+          
+          // Insert newline at cursor position
+          const before = currentText.substring(0, cursorPos);
+          const after = currentText.substring(cursorPos);
+          const newText = before + '\n' + after;
+          
+          // Update DOM directly and skip sync to prevent re-render interference
+          skipSyncRef.current = true;
+          updateEditorContent(newText);
+          lastValueRef.current = newText;
+          onChange({ target: { value: newText } });
+          
+          // Restore cursor position after the newline
+          setTimeout(() => {
+            setCursorPosition(cursorPos + 1);
+            editorRef.current?.focus();
+          }, 0);
+        }
       } else if (e.key === '/' && !e.shiftKey) {
         e.preventDefault();
         e.stopPropagation();
@@ -876,6 +913,36 @@ export default function StyledChordEditor({
       instructionElements.forEach((el) => {
         const text = el.textContent.trim();
         el.setAttribute('data-instruction-text', text);
+      });
+      
+      // Normalize any DIV/P elements (except headings/instructions) to BR tags
+      // This prevents accumulation of block elements that cause extra empty lines
+      const blockElements = editorRef.current.querySelectorAll('div, p');
+      blockElements.forEach((el) => {
+        // Skip headings and instructions - they should remain as block elements
+        if (el.hasAttribute('data-heading') || el.hasAttribute('data-instruction')) {
+          return;
+        }
+        
+        // Check if the block element is empty (only whitespace/zero-width spaces)
+        const blockText = el.textContent.replace(/\u200B/g, '').trim();
+        const isEmpty = blockText === '' && el.children.length === 0;
+        
+        if (isEmpty) {
+          // Replace empty DIV/P with BR tag
+          const br = document.createElement('br');
+          el.parentNode?.replaceChild(br, el);
+        } else {
+          // For DIV/P with content, move content out and replace with BR
+          // This handles cases where content was pasted into a DIV/P
+          const fragment = document.createDocumentFragment();
+          while (el.firstChild) {
+            fragment.appendChild(el.firstChild);
+          }
+          const br = document.createElement('br');
+          el.parentNode?.replaceChild(br, el);
+          br.parentNode?.insertBefore(fragment, br.nextSibling);
+        }
       });
     }
     
