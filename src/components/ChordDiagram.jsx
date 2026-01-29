@@ -138,6 +138,7 @@ export default function ChordDiagram({
   const leftPadding = 5; // Padding to accommodate dot radius and prevent cropping
   const rightPadding = 5; // Padding to accommodate dot radius and prevent cropping
   const nutExtension = 3; // How much the nut extends beyond strings
+  const BOTTOM_PADDING = 8; // Space below end of string lines
   const svgStartX = leftPadding; // Internal SVG X start position for strings
   const stringsWidth = (stringCount - 1) * stringSpacing; // Width spanned by strings
   // SVG width: left padding + strings width + right padding = 5 + 36 + 5 = 46px for 4 strings
@@ -145,7 +146,7 @@ export default function ChordDiagram({
   // Label container width: 14px (left) + 46px (SVG) + 14px (right) = 74px total
   const labelContainerWidth = sideContainerWidth + width + sideContainerWidth;
   const startY = 6; // Start Y position (first fret line position)
-  const height = fretCount * fretSpacing + 20; // Height based on fret count
+  const height = startY + (fretCount - 1) * fretSpacing + 3 + BOTTOM_PADDING;
   
   // Calculate Y position for fret number (centered at baseFret position)
   const fretNumberY = !showNut && baseFret > 0
