@@ -12,8 +12,34 @@ import StyledChordEditor from '../components/StyledChordEditor';
 import ChordDiagram from '../components/ChordDiagram';
 import { findChord } from '../utils/chord-library';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
-import { MicrophoneStageIcon } from '../utils/icons';
+import { MicrophoneStageIcon, ChordIcon, PlusIcon } from '../utils/icons';
 import PDFImportModal from '../components/PDFImportModal';
+import { useEditingSong } from '../contexts/EditingSongContext';
+
+function EditModeScrollWrapper({ isEditing, scrollContainerRef, editViewportHeight, children, renderBanner }) {
+  if (!isEditing) return children;
+  return (
+    <div
+      ref={scrollContainerRef}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        width: '100%',
+        height: editViewportHeight,
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        WebkitOverflowScrolling: 'touch',
+      }}
+    >
+      {renderBanner()}
+      <div className="w-full px-4 pb-8 pt-4 xl:container xl:mx-auto">
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export default function SongSheet() {
   // All hooks must be called in the same order on every render
@@ -22,7 +48,10 @@ export default function SongSheet() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
-  
+  const { setEditingSong } = useEditingSong() || {};
+  const chordEditorRef = useRef(null);
+  const scrollContainerRef = useRef(null);
+
   const [chordMode, setChordMode] = useState('inline'); // 'inline' or 'above'
   const [previousChordMode, setPreviousChordMode] = useState(null); // Store previous mode when entering edit
   const [menuOpen, setMenuOpen] = useState(false);
@@ -35,6 +64,29 @@ export default function SongSheet() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [chordsPanelVisible, setChordsPanelVisible] = useState(true);
+
+  const [editViewportHeight, setEditViewportHeight] = useState(
+    typeof window !== 'undefined' && window.visualViewport
+      ? window.visualViewport.height
+      : typeof window !== 'undefined'
+        ? window.innerHeight
+        : 0
+  );
+
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!vv || !isEditing) return;
+    const onResize = () => setEditViewportHeight(vv.height);
+    onResize();
+    vv.addEventListener('resize', onResize);
+    return () => vv.removeEventListener('resize', onResize);
+  }, [isEditing]);
+
+  useEffect(() => {
+    setEditingSong?.(isEditing);
+    return () => setEditingSong?.(false);
+  }, [isEditing, setEditingSong]);
+
   const menuRef = useRef(null);
   const songSelectorRef = useRef(null);
   
@@ -659,35 +711,6 @@ export default function SongSheet() {
 
   return (
     <div>
-      {/* Edit Banner */}
-      {isEditing && (
-        <div className="fixed top-0 left-0 right-0 bg-primary-50 border-b border-primary-200 z-40 shadow-sm">
-          <div className="w-full px-4 xl:container xl:mx-auto xl:pl-16">
-            <div className="flex items-center justify-between py-3">
-              <p className="text-sm font-medium text-primary-900">
-                You are editing this song
-              </p>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="btn btn-primary text-sm"
-                >
-                  {saving ? 'Saving...' : 'Save'}
-                </button>
-                <button
-                  onClick={handleCancelEdit}
-                  disabled={saving}
-                  className="btn btn-secondary text-sm"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Delete Confirmation Modal */}
       {showDeleteModal && song && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -716,6 +739,49 @@ export default function SongSheet() {
         </div>
       )}
 
+      <EditModeScrollWrapper
+        isEditing={isEditing}
+        scrollContainerRef={scrollContainerRef}
+        editViewportHeight={editViewportHeight}
+        renderBanner={() => (
+          <div className="sticky top-0 left-0 right-0 bg-gray-50 z-50">
+            <div className="w-full px-4 xl:container xl:mx-auto xl:pl-16">
+              <div className="flex items-center justify-between py-3">
+                <div className="flex items-center gap-3">
+                  <span className="h-11 flex items-center flex-shrink-0" aria-hidden>
+                    <PlusIcon weight="light" size={24} className="text-gray-600" />
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => chordEditorRef.current?.openChordModal?.()}
+                    className="h-11 min-w-[44px] flex flex-col items-center justify-center gap-0.5 text-gray-600 hover:text-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded px-2 text-base font-normal"
+                    aria-label="Insert chord"
+                  >
+                    <ChordIcon weight="light" size={24} className="flex-shrink-0" />
+                    <span>Chord</span>
+                  </button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleCancelEdit}
+                    disabled={saving}
+                    className="h-11 px-4 flex items-center text-base font-normal text-gray-600 hover:text-gray-800 disabled:opacity-50 rounded-lg"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="btn btn-primary text-base font-normal h-11 min-h-[44px] flex items-center px-8"
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      >
       <div className="mb-6">
         <div className="flex items-start justify-between mb-2">
           <div className="flex-1 min-w-0">
@@ -870,6 +936,7 @@ export default function SongSheet() {
         <div className="flex-1 order-2">
           {isEditing ? (
             <StyledChordEditor
+              ref={chordEditorRef}
               value={lyricsText}
               onChange={(e) => setLyricsText(e.target.value)}
               rows={30}
@@ -1063,6 +1130,7 @@ export default function SongSheet() {
           </div>
         ) : null}
       </div>
+      </EditModeScrollWrapper>
 
       {/* Share with Groups Modal */}
       {showShareModal && song && (

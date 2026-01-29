@@ -3,12 +3,15 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import Navigation from './Navigation';
 import { useAuth } from '../contexts/AuthContext';
 import { SongActionsProvider } from '../contexts/SongActionsContext';
+import { useEditingSong } from '../contexts/EditingSongContext';
 import OnboardingModal from './OnboardingModal';
 import { db } from '../db/schema';
 
 export default function Layout() {
   const { isAuthenticated, loading, user: authUser } = useAuth();
   const navigate = useNavigate();
+  const editingSong = useEditingSong();
+  const isEditingSong = editingSong?.isEditingSong;
 
   // Query full user data to check onboarding status
   // Use impossible condition when no user ID to avoid querying
@@ -68,7 +71,7 @@ export default function Layout() {
         {/* Only show navigation and content if onboarding is complete */}
         {!needsOnboarding && (
           <>
-            <Navigation />
+            {!isEditingSong && <Navigation />}
             <main className="w-full px-4 pb-8 pt-4 xl:container xl:mx-auto">
               <Outlet />
             </main>
