@@ -12,7 +12,7 @@ import StyledChordEditor from '../components/StyledChordEditor';
 import ChordDiagram from '../components/ChordDiagram';
 import { findChord } from '../utils/chord-library';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
-import { MicrophoneStageIcon } from '../utils/icons';
+import { MicrophoneStageIcon, ChordIcon, PlusIcon } from '../utils/icons';
 import PDFImportModal from '../components/PDFImportModal';
 
 export default function SongSheet() {
@@ -22,7 +22,8 @@ export default function SongSheet() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
-  
+  const chordEditorRef = useRef(null);
+
   const [chordMode, setChordMode] = useState('inline'); // 'inline' or 'above'
   const [previousChordMode, setPreviousChordMode] = useState(null); // Store previous mode when entering edit
   const [menuOpen, setMenuOpen] = useState(false);
@@ -661,26 +662,37 @@ export default function SongSheet() {
     <div>
       {/* Edit Banner */}
       {isEditing && (
-        <div className="fixed top-0 left-0 right-0 bg-primary-50 border-b border-primary-200 z-40 shadow-sm">
+        <div className="fixed top-0 left-0 right-0 bg-gray-50 z-40">
           <div className="w-full px-4 xl:container xl:mx-auto xl:pl-16">
             <div className="flex items-center justify-between py-3">
-              <p className="text-sm font-medium text-primary-900">
-                You are editing this song
-              </p>
               <div className="flex items-center gap-3">
+                <span className="h-11 flex items-center flex-shrink-0" aria-hidden>
+                  <PlusIcon weight="light" size={24} className="text-gray-600" />
+                </span>
                 <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="btn btn-primary text-sm"
+                  type="button"
+                  onClick={() => chordEditorRef.current?.openChordModal?.()}
+                  className="h-11 min-w-[44px] flex flex-col items-center justify-center gap-0.5 text-gray-600 hover:text-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded px-2 text-base font-normal"
+                  aria-label="Insert chord"
                 >
-                  {saving ? 'Saving...' : 'Save'}
+                  <ChordIcon weight="light" size={24} className="flex-shrink-0" />
+                  <span>Chord</span>
                 </button>
+              </div>
+              <div className="flex items-center gap-3">
                 <button
                   onClick={handleCancelEdit}
                   disabled={saving}
-                  className="btn btn-secondary text-sm"
+                  className="h-11 px-4 flex items-center text-base font-normal text-gray-600 hover:text-gray-800 disabled:opacity-50 rounded-lg"
                 >
                   Cancel
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="btn btn-primary text-base font-normal h-11 min-h-[44px] flex items-center px-8"
+                >
+                  {saving ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </div>
@@ -716,7 +728,7 @@ export default function SongSheet() {
         </div>
       )}
 
-      <div className="mb-6">
+      <div className={`mb-6 ${isEditing ? 'pt-14' : ''}`}>
         <div className="flex items-start justify-between mb-2">
           <div className="flex-1 min-w-0">
             {isEditing ? (
@@ -870,6 +882,7 @@ export default function SongSheet() {
         <div className="flex-1 order-2">
           {isEditing ? (
             <StyledChordEditor
+              ref={chordEditorRef}
               value={lyricsText}
               onChange={(e) => setLyricsText(e.target.value)}
               rows={30}

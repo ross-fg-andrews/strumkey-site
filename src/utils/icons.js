@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   MicrophoneStage,
   DiceFour,
+  Plus,
   ArrowLineRight,
   ArrowLineLeft,
   ArrowLineUp,
@@ -30,6 +31,7 @@ import {
 // Export with app's naming convention for consistency
 export const MenuIcon = List;
 export const XIcon = X;
+export const PlusIcon = Plus;
 export const HomeIcon = House;
 export const MusicIcon = MusicNotes;
 export const BookIcon = BookOpen;

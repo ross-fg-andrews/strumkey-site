@@ -1,8 +1,7 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { findChord } from '../utils/chord-library';
 import { useChordAutocomplete } from '../hooks/useChordAutocomplete';
 import ChordInsertionModal from './ChordInsertionModal';
-import ChordInsertionFAB from './ChordInsertionFAB';
 import CustomChordModal from './CustomChordModal';
 import ChordVariationsModal from './ChordVariationsModal';
 import { createPersonalChord } from '../db/mutations';
@@ -34,7 +33,7 @@ function findChordAtPosition(text, cursorPos) {
   return null;
 }
 
-export default function StyledChordEditor({ 
+const StyledChordEditor = forwardRef(function StyledChordEditor({ 
   value, 
   onChange, 
   placeholder, 
@@ -44,7 +43,7 @@ export default function StyledChordEditor({
   instrument = 'ukulele',
   tuning = 'ukulele_standard',
   userId = null
-}) {
+}, ref) {
   const editorRef = useRef(null);
   const containerRef = useRef(null);
   const modalRef = useRef(null);
@@ -53,7 +52,6 @@ export default function StyledChordEditor({
   const insertPositionRef = useRef(0);
   const inputDebounceTimerRef = useRef(null);
   const justHandledEnterRef = useRef(false);
-  const [isFocused, setIsFocused] = useState(false);
 
   // Use shared autocomplete hook
   const {
@@ -80,45 +78,18 @@ export default function StyledChordEditor({
     handleChordPositionSelect,
   } = useChordAutocomplete({ value, instrument, tuning, userId });
 
-  // Handle focus/blur for FAB visibility
-  const handleFocus = () => {
-    setIsFocused(true);
-  };
-
-  const handleBlur = () => {
-    // Delay to check if focus moved to modal
-    setTimeout(() => {
-      if (document.activeElement !== searchInputRef.current && 
-          !modalRef.current?.contains(document.activeElement)) {
-        setIsFocused(false);
-      }
-    }, 100);
-  };
-
-  // Handle FAB mousedown to capture cursor position before blur
-  const handleFABMouseDown = (e) => {
-    // Prevent default to avoid immediate focus change
-    e.preventDefault();
-    if (editorRef.current) {
-      // CRITICAL: Capture cursor position BEFORE any focus changes
-      // Read position synchronously while editor still has focus
-      // The simplified getCursorPosition() returns an absolute character offset (like selectionStart)
-      const cursorPos = getCursorPosition();
-      
-      // Store the position - getCursorPosition() always returns a valid number
-      insertPositionRef.current = cursorPos;
-      
-      // Debug logging
-      const currentText = getTextFromEditor();
-      console.log('[StyledChordEditor] FAB clicked - captured position:', cursorPos, 'text length:', currentText.length,
-        'text around pos:', JSON.stringify(currentText.substring(Math.max(0, cursorPos - 3), Math.min(currentText.length, cursorPos + 3))));
-      
-      // Now open the modal
-      setQuery('');
-      setSelectedIndex(0);
-      setShowDropdown(true);
-    }
-  };
+  // Expose openChordModal for parent (e.g. edit banner) to open modal at current cursor
+  useImperativeHandle(ref, () => ({
+    openChordModal() {
+      editorRef.current?.focus();
+      setTimeout(() => {
+        insertPositionRef.current = getCursorPosition();
+        setQuery('');
+        setSelectedIndex(0);
+        setShowDropdown(true);
+      }, 0);
+    },
+  }), [setQuery, setSelectedIndex, setShowDropdown]);
 
   // Handle modal close
   const handleModalClose = () => {
@@ -1227,8 +1198,6 @@ export default function StyledChordEditor({
         contentEditable
         onInput={handleInput}
         onKeyDown={handleKeyDown}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
         className={className}
         data-placeholder={placeholder}
         style={{
@@ -1242,12 +1211,6 @@ export default function StyledChordEditor({
           pointer-events: none;
         }
       `}</style>
-      
-      {/* Floating Action Button */}
-      <ChordInsertionFAB
-        onMouseDown={handleFABMouseDown}
-        visible={isFocused && !showDropdown}
-      />
       
       {/* Chord Insertion Modal */}
       <ChordInsertionModal
@@ -1305,4 +1268,6 @@ export default function StyledChordEditor({
       />
     </div>
   );
-}
+});
+
+export default StyledChordEditor;

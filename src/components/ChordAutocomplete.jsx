@@ -2,7 +2,6 @@ import { useRef, useEffect, useState } from 'react';
 import { findChord } from '../utils/chord-library';
 import { useChordAutocomplete } from '../hooks/useChordAutocomplete';
 import ChordInsertionModal from './ChordInsertionModal';
-import ChordInsertionFAB from './ChordInsertionFAB';
 import CustomChordModal from './CustomChordModal';
 import ChordVariationsModal from './ChordVariationsModal';
 import { createPersonalChord } from '../db/mutations';
@@ -23,7 +22,6 @@ export default function ChordAutocomplete({
   const modalRef = useRef(null);
   const searchInputRef = useRef(null);
   const insertPositionRef = useRef(0);
-  const [isFocused, setIsFocused] = useState(false);
 
   // Use shared autocomplete hook
   const {
@@ -49,48 +47,6 @@ export default function ChordAutocomplete({
     libraryFiltered,
     handleChordPositionSelect,
   } = useChordAutocomplete({ value, instrument, tuning, userId });
-
-  // Handle focus/blur for FAB visibility
-  const handleFocus = () => {
-    setIsFocused(true);
-  };
-
-  const handleBlur = () => {
-    // Delay to check if focus moved to modal
-    setTimeout(() => {
-      if (document.activeElement !== searchInputRef.current && 
-          !modalRef.current?.contains(document.activeElement)) {
-        setIsFocused(false);
-      }
-    }, 100);
-  };
-
-  // Handle FAB mousedown to capture cursor position before blur
-  const handleFABMouseDown = (e) => {
-    // Prevent default to avoid immediate focus change
-    e.preventDefault();
-    const textarea = textareaRef.current;
-    if (textarea) {
-      // CRITICAL: Capture cursor position BEFORE any focus changes
-      // Use mousedown instead of click to capture position before blur
-      const cursorStart = textarea.selectionStart;
-      const cursorEnd = textarea.selectionEnd;
-      const cursorPos = Math.min(cursorStart, cursorEnd);
-      
-      // Store immediately - this must happen synchronously before any async operations
-      insertPositionRef.current = cursorPos;
-      
-      // Debug logging
-      const text = textarea.value || '';
-      console.log('[ChordAutocomplete] FAB clicked - captured position:', cursorPos, 'text length:', text.length,
-        'text around pos:', JSON.stringify(text.substring(Math.max(0, cursorPos - 3), Math.min(text.length, cursorPos + 3))));
-      
-      // Now open the modal
-      setQuery('');
-      setSelectedIndex(0);
-      setShowDropdown(true);
-    }
-  };
 
   // Handle modal close
   const handleModalClose = () => {
@@ -391,18 +347,10 @@ export default function ChordAutocomplete({
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
         placeholder={placeholder}
         className={className}
         rows={rows}
         required={required}
-      />
-      
-      {/* Floating Action Button */}
-      <ChordInsertionFAB
-        onMouseDown={handleFABMouseDown}
-        visible={isFocused && !showDropdown}
       />
       
       {/* Chord Insertion Modal */}
