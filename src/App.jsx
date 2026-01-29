@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { db } from './db/schema'
 import Layout from './components/Layout'
+import { EditingSongProvider } from './contexts/EditingSongContext'
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import AdminPanel from './pages/AdminPanel'
@@ -109,6 +110,7 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <EditingSongProvider>
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
@@ -128,6 +130,7 @@ function App() {
             <Route path="/meetings/:id" element={<MeetingPage />} />
           </Route>
         </Routes>
+        </EditingSongProvider>
       </BrowserRouter>
     </AuthProvider>
   )

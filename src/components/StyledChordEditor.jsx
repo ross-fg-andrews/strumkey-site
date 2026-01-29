@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
+import { createPortal } from 'react-dom';
 import { findChord } from '../utils/chord-library';
 import { useChordAutocomplete } from '../hooks/useChordAutocomplete';
 import ChordInsertionModal from './ChordInsertionModal';
@@ -600,11 +601,8 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
             const isEmpty = blockText === '' && child.children.length === 0;
             
             if (isEmpty) {
-              // Empty DIV/P should be treated as a single line break
-              // Add newline only if there's already content and we don't already have a newline
-              if (text.length > 0 && !text.endsWith('\n')) {
-                text += '\n';
-              }
+              // Empty DIV/P = one line break; always add newline so consecutive empty lines are preserved
+              text += '\n';
             } else {
               // Block element with content - add newline before (if there's already content)
               if (text.length > 0 && !text.endsWith('\n')) {
@@ -1212,34 +1210,37 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
         }
       `}</style>
       
-      {/* Chord Insertion Modal */}
-      <ChordInsertionModal
-        isOpen={showDropdown}
-        query={query}
-        setQuery={setQuery}
-        selectedIndex={selectedIndex}
-        setSelectedIndex={setSelectedIndex}
-        filteredElements={filteredElements}
-        usedFiltered={usedFiltered}
-        libraryFiltered={libraryFiltered}
-        personalChordNames={personalChordNames}
-        instrument={instrument}
-        tuning={tuning}
-        onSelectElement={insertElement}
-        onSelectChord={handleChordClick}
-        onShowVariations={() => {
-          setShowVariationsModal(true);
-          setShowDropdown(false);
-        }}
-        onCreateCustom={() => {
-          setShowCustomChordModal(true);
-          setShowDropdown(false);
-        }}
-        onClose={handleModalClose}
-        onInsert={handleModalInsert}
-        modalRef={modalRef}
-        searchInputRef={searchInputRef}
-      />
+      {/* Chord Insertion Modal - portaled to body so it works correctly inside scroll containers */}
+      {showDropdown && createPortal(
+        <ChordInsertionModal
+          isOpen={showDropdown}
+          query={query}
+          setQuery={setQuery}
+          selectedIndex={selectedIndex}
+          setSelectedIndex={setSelectedIndex}
+          filteredElements={filteredElements}
+          usedFiltered={usedFiltered}
+          libraryFiltered={libraryFiltered}
+          personalChordNames={personalChordNames}
+          instrument={instrument}
+          tuning={tuning}
+          onSelectElement={insertElement}
+          onSelectChord={handleChordClick}
+          onShowVariations={() => {
+            setShowVariationsModal(true);
+            setShowDropdown(false);
+          }}
+          onCreateCustom={() => {
+            setShowCustomChordModal(true);
+            setShowDropdown(false);
+          }}
+          onClose={handleModalClose}
+          onInsert={handleModalInsert}
+          modalRef={modalRef}
+          searchInputRef={searchInputRef}
+        />,
+        document.body
+      )}
       
       {/* Custom Chord Modal */}
       <CustomChordModal
