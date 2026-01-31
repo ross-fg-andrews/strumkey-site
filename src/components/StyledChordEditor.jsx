@@ -460,11 +460,7 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
   
   // Set cursor position in contenteditable (accounting for <br> tags, chord spans, and heading/instruction elements)
   const setCursorPosition = (pos) => {
-    // #region agent log
-    const caller = setCursorCallerRef.current || 'unknown';
-    setCursorCallerRef.current = '';
-    fetch('http://127.0.0.1:7242/ingest/3af9d058-7c69-4113-abcd-1fb30bbd0cf0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StyledChordEditor.jsx:setCursorPosition',message:'setCursorPosition called',data:{pos,caller,valueLen:(value||'').length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
+    const fromInsertChord = setCursorCallerRef.current?.startsWith?.('insertChord');
     const selection = window.getSelection();
     const range = document.createRange();
     
@@ -532,14 +528,36 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
         const chordLength = getChordMarkerLength(item.node);
         if (currentPos + chordLength >= pos) {
           // Position is within or right after the chord
-          // There should be a zero-width space text node after each chord for iOS cursor positioning
-          const nextItem = allNodes[i + 1];
-          if (nextItem && nextItem.type === 'text') {
-            // Position at start of next text node (zero-width space or regular text)
-            selection.removeAllRanges();
-            selection.collapse(nextItem.node, 0);
+          if (fromInsertChord) {
+            let targetNode = null;
+            let targetOffset = 0;
+            for (let j = i + 1; j < allNodes.length; j++) {
+              const n = allNodes[j];
+              if (n.type === 'text') {
+                const len = (n.node.textContent || '').replace(/\u200B/g, '').length;
+                if (len > 0) {
+                  targetNode = n.node;
+                  targetOffset = 0;
+                  break;
+                }
+              } else if (n.type === 'br') {
+                range.setStartBefore(n.node);
+                range.setEndBefore(n.node);
+                selection.removeAllRanges();
+                selection.addRange(range);
+                return;
+              }
+            }
+            if (targetNode) {
+              selection.removeAllRanges();
+              selection.collapse(targetNode, targetOffset);
+            } else {
+              range.setStartAfter(item.node);
+              range.setEndAfter(item.node);
+              selection.removeAllRanges();
+              selection.addRange(range);
+            }
           } else {
-            // Fallback if no text node (shouldn't happen with zero-width spaces)
             range.setStartAfter(item.node);
             range.setEndAfter(item.node);
             selection.removeAllRanges();
@@ -842,30 +860,19 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
   const lastValueRef = useRef(value);
   useEffect(() => {
     if (!editorRef.current) return;
-    // #region agent log
-    const willSkipSync = !!skipSyncRef.current;
-    const valueEqLast = value === lastValueRef.current;
-    const currentText = getTextFromEditor();
-    const willOverwrite = !valueEqLast && currentText !== value;
-    fetch('http://127.0.0.1:7242/ingest/3af9d058-7c69-4113-abcd-1fb30bbd0cf0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StyledChordEditor.jsx:syncEffect',message:'sync effect run',data:{valueLen:(value||'').length,lastValueLen:(lastValueRef.current||'').length,currentTextLen:currentText.length,willSkipSync,valueEqLast,willOverwrite},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     if (skipSyncRef.current) {
       skipSyncRef.current = false;
       lastValueRef.current = value;
       return;
     }
     if (value === lastValueRef.current) return;
+    const currentText = getTextFromEditor();
     if (currentText !== value) {
       const cursorPos = getCursorPosition();
       lastValueRef.current = value;
       updateEditorContent(value || '');
       // Restore cursor after a brief delay; skip if insertElement ran in between (it sets suppressSyncCursorRef)
       setTimeout(() => {
-        // #region agent log
-        const suppress = suppressSyncCursorRef.current;
-        const willCallSetCursor = !suppress;
-        fetch('http://127.0.0.1:7242/ingest/3af9d058-7c69-4113-abcd-1fb30bbd0cf0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StyledChordEditor.jsx:syncEffect-setTimeout',message:'sync effect setTimeout callback',data:{suppress,willCallSetCursor,cursorPos,valueLen:(value||'').length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         if (suppressSyncCursorRef.current) return;
         try {
           setCursorCallerRef.current = 'sync-effect';
@@ -1187,28 +1194,12 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
     }
     
     // Debug logging
-    console.log('[StyledChordEditor] insertChord - position:', insertPos, 'text length:', currentText.length,
-      'text around pos:', JSON.stringify(currentText.substring(Math.max(0, insertPos - 3), Math.min(currentText.length, insertPos + 3))));
-    
     // Split text at insertion point (like textarea: text.substring(0, selectionStart) + chord + text.substring(selectionStart))
     let before = currentText.substring(0, insertPos);
     let after = currentText.substring(insertPos);
 
     const charBefore = before.length > 0 ? before[before.length - 1] : null;
     const charAfter = after.length > 0 ? after[0] : null;
-    
-    // Special handling: if we're inserting at the start of an empty line.
-    // Empty lines are represented as consecutive newlines (\n\n).
-    // Problem: If cursor position is detected as right after the second \n (before="line1\n\n", after="line2"),
-    // inserting creates "line1\n\n[C]line2" which when processed creates an extra empty line.
-    // Solution: If before ends with \n\n, we're probably at the wrong position. Adjust to right after first \n.
-    let positionAdjustment = 0;
-    if (charBefore === '\n' && before.length >= 2 && before[before.length - 2] === '\n') {
-      // We have \n\n before us - adjust to be right after the first \n instead
-      before = before.slice(0, -1); // Remove the second \n from before
-      after = '\n' + after; // Add it to the start of after
-      positionAdjustment = -1; // We moved back one character
-    }
     
     const isAlphanumeric = (char) => char && /[a-zA-Z0-9]/.test(char);
     const isWithinWord = isAlphanumeric(charBefore) && isAlphanumeric(charAfter);
@@ -1220,7 +1211,8 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
       if (isAlphanumeric(charBefore)) {
         spaceBefore = ' ';
       }
-      if (isAlphanumeric(charAfter)) {
+      // Don't add space after when at start of line - chord goes directly before word, cursor right after chord
+      if (isAlphanumeric(charAfter) && charBefore !== '\n') {
         spaceAfter = ' ';
       }
     }
@@ -1255,14 +1247,19 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
     lastValueRef.current = newText;
     onChange({ target: { value: newText } });
 
-    // Calculate cursor position for after the inserted chord
-    // Adjust for empty line start fix (we may have moved the insertion point back)
-    const newCursorPos = insertPos + positionAdjustment + spaceBefore.length + chordText.length + 2 + spaceAfter.length;
+    // Calculate cursor position for directly after the chord (before any trailing space).
+    // Two spaces can appear after chords: (1) U+0020 regular space for readability when spaceAfter;
+    // (2) U+200B zero-width space in the DOM only (after each chord span for iOS cursor positioning,
+    // stripped in getTextFromEditor). Cursor math differs by context: use -1 for mid-word and
+    // start-of-line to land correctly after the chord.
+    const atStartOfLine = !before.length || before.endsWith('\n');
+    const bracketLen = (isWithinWord || atStartOfLine) ? -1 : 0;
+    const newCursorPos = insertPos + spaceBefore.length + chordText.length + bracketLen;
     
     // Use double requestAnimationFrame for iOS Safari compatibility
     // iOS needs the first frame for DOM update, second frame for cursor rendering
     requestAnimationFrame(() => {
-      editorRef.current?.focus();
+      editorRef.current?.focus({ preventScroll: true });
       setCursorCallerRef.current = 'insertChord';
       setCursorPosition(newCursorPos);
       
@@ -1351,9 +1348,6 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
     lastValueRef.current = newText;
     skipSyncRef.current = true;
     suppressSyncCursorRef.current = true; // any pending sync-effect setCursorPosition will skip
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/3af9d058-7c69-4113-abcd-1fb30bbd0cf0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StyledChordEditor.jsx:insertElement',message:'insertElement set suppress true',data:{elementType,targetPos,newTextLen:newText.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     // Notify parent synchronously; effect will place cursor after commit
     onChange({ target: { value: newText } });
     pendingSectionCursorRef.current = targetPos;
@@ -1380,9 +1374,6 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
       setQuery('');
       setTimeout(() => {
         setTimeout(() => {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/3af9d058-7c69-4113-abcd-1fb30bbd0cf0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StyledChordEditor.jsx:insertElement',message:'insertElement clear suppressSyncCursorRef',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
           suppressSyncCursorRef.current = false;
         }, 50);
         onSectionInsertDone?.();
