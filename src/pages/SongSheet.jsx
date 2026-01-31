@@ -12,7 +12,7 @@ import StyledChordEditor from '../components/StyledChordEditor';
 import ChordDiagram from '../components/ChordDiagram';
 import { findChord } from '../utils/chord-library';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
-import { MicrophoneStageIcon, ChordIcon, PlusIcon, ImportIcon } from '../utils/icons';
+import { MicrophoneStageIcon, ChordIcon, PlusIcon, ImportIcon, TextboxIcon } from '../utils/icons';
 import PDFImportModal from '../components/PDFImportModal';
 import { useEditingSong } from '../contexts/EditingSongContext';
 
@@ -50,6 +50,7 @@ export default function SongSheet() {
   const { user } = useAuth();
   const { setEditingSong } = useEditingSong() || {};
   const chordEditorRef = useRef(null);
+  const sectionButtonRef = useRef(null);
   const scrollContainerRef = useRef(null);
 
   const [chordMode, setChordMode] = useState('inline'); // 'inline' or 'above'
@@ -62,6 +63,7 @@ export default function SongSheet() {
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [sectionDropdownOpen, setSectionDropdownOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [chordsPanelVisible, setChordsPanelVisible] = useState(true);
 
@@ -252,6 +254,27 @@ export default function SongSheet() {
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [songSelectorOpen]);
+
+  // Close section dropdown when clicking outside or pressing Escape
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (sectionButtonRef.current && !sectionButtonRef.current.contains(event.target)) {
+        setSectionDropdownOpen(false);
+      }
+    }
+    function handleEscape(e) {
+      if (e.key === 'Escape') setSectionDropdownOpen(false);
+    }
+
+    if (sectionDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleEscape);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener('keydown', handleEscape);
+      };
+    }
+  }, [sectionDropdownOpen]);
 
   // Parse chords from JSON string (must be before early returns for hooks)
   // Always ensure chords is an array to maintain consistent hook dependencies
@@ -643,6 +666,47 @@ export default function SongSheet() {
                       <ChordIcon weight="light" size={24} className="flex-shrink-0" />
                       <span>Chord</span>
                     </button>
+                    <div className="relative" ref={sectionButtonRef}>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          chordEditorRef.current?.captureCursorPosition?.();
+                        }}
+                        onClick={() => setSectionDropdownOpen((open) => !open)}
+                        className="h-11 min-w-[44px] flex flex-col items-center justify-center gap-0.5 text-gray-600 hover:text-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded px-2 text-base font-normal"
+                        aria-label="Insert section"
+                        aria-expanded={sectionDropdownOpen}
+                        aria-haspopup="menu"
+                      >
+                        <TextboxIcon weight="light" size={24} className="flex-shrink-0" />
+                        <span>Section</span>
+                      </button>
+                      {sectionDropdownOpen && (
+                        <div className="absolute left-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10 py-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              chordEditorRef.current?.insertSection?.('heading');
+                              setSectionDropdownOpen(false);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                          >
+                            Heading
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              chordEditorRef.current?.insertSection?.('instruction');
+                              setSectionDropdownOpen(false);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                          >
+                            Instruction
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -792,6 +856,47 @@ export default function SongSheet() {
                     <ChordIcon weight="light" size={24} className="flex-shrink-0" />
                     <span>Chord</span>
                   </button>
+                  <div className="relative" ref={sectionButtonRef}>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        chordEditorRef.current?.captureCursorPosition?.();
+                      }}
+                      onClick={() => setSectionDropdownOpen((open) => !open)}
+                      className="h-11 min-w-[44px] flex flex-col items-center justify-center gap-0.5 text-gray-600 hover:text-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded px-2 text-base font-normal"
+                      aria-label="Insert section"
+                      aria-expanded={sectionDropdownOpen}
+                      aria-haspopup="menu"
+                    >
+                      <TextboxIcon weight="light" size={24} className="flex-shrink-0" />
+                      <span>Section</span>
+                    </button>
+                    {sectionDropdownOpen && (
+                      <div className="absolute left-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10 py-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            chordEditorRef.current?.insertSection?.('heading');
+                            setSectionDropdownOpen(false);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                        >
+                          Heading
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            chordEditorRef.current?.insertSection?.('instruction');
+                            setSectionDropdownOpen(false);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                        >
+                          Instruction
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {!lyricsText.trim() && (
