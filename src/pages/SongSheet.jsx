@@ -687,8 +687,7 @@ export default function SongSheet() {
                           <button
                             type="button"
                             onClick={() => {
-                              chordEditorRef.current?.insertSection?.('heading');
-                              setSectionDropdownOpen(false);
+                              chordEditorRef.current?.insertSection?.('heading', () => setSectionDropdownOpen(false));
                             }}
                             className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
                           >
@@ -697,8 +696,7 @@ export default function SongSheet() {
                           <button
                             type="button"
                             onClick={() => {
-                              chordEditorRef.current?.insertSection?.('instruction');
-                              setSectionDropdownOpen(false);
+                              chordEditorRef.current?.insertSection?.('instruction', () => setSectionDropdownOpen(false));
                             }}
                             className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
                           >
@@ -877,8 +875,7 @@ export default function SongSheet() {
                         <button
                           type="button"
                           onClick={() => {
-                            chordEditorRef.current?.insertSection?.('heading');
-                            setSectionDropdownOpen(false);
+                            chordEditorRef.current?.insertSection?.('heading', () => setSectionDropdownOpen(false));
                           }}
                           className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
                         >
@@ -887,8 +884,7 @@ export default function SongSheet() {
                         <button
                           type="button"
                           onClick={() => {
-                            chordEditorRef.current?.insertSection?.('instruction');
-                            setSectionDropdownOpen(false);
+                            chordEditorRef.current?.insertSection?.('instruction', () => setSectionDropdownOpen(false));
                           }}
                           className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
                         >
