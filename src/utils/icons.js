@@ -26,6 +26,8 @@ import {
   ArrowLineLeft,
   ArrowLineUp,
   ArrowLineDown,
+  FileArrowUp,
+  Textbox,
 } from '@phosphor-icons/react';
 
 // Export with app's naming convention for consistency
@@ -46,6 +48,8 @@ export const ArrowLineRightIcon = ArrowLineRight;
 export const ArrowLineLeftIcon = ArrowLineLeft;
 export const ArrowLineUpIcon = ArrowLineUp;
 export const ArrowLineDownIcon = ArrowLineDown;
+export const ImportIcon = FileArrowUp;
+export const TextboxIcon = Textbox;
 
 // Re-export commonly used Phosphor icon props/types for convenience
 export { IconContext } from '@phosphor-icons/react';

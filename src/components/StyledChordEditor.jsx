@@ -50,7 +50,11 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
   const modalRef = useRef(null);
   const searchInputRef = useRef(null);
   const skipSyncRef = useRef(false);
+  const suppressSyncCursorRef = useRef(false); // set by insertElement so any pending sync setCursorPosition is skipped
+  const setCursorCallerRef = useRef(''); // for debug: who called setCursorPosition
+  const pendingSectionCursorRef = useRef(null); // when set, effect will place cursor after commit
   const insertPositionRef = useRef(0);
+  const lastCursorPositionInEditorRef = useRef(0); // last position while selection was in editor (for Section mousedown)
   const inputDebounceTimerRef = useRef(null);
   const justHandledEnterRef = useRef(false);
 
@@ -79,7 +83,7 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
     handleChordPositionSelect,
   } = useChordAutocomplete({ value, instrument, tuning, userId });
 
-  // Expose openChordModal for parent (e.g. edit banner) to open modal at current cursor
+  // Expose openChordModal, captureCursorPosition, insertSection for parent (e.g. edit banner)
   useImperativeHandle(ref, () => ({
     openChordModal() {
       editorRef.current?.focus();
@@ -89,6 +93,21 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
         setSelectedIndex(0);
         setShowDropdown(true);
       }, 0);
+    },
+    captureCursorPosition() {
+      if (!editorRef.current) return;
+      // Always use last known position when opening Section menu: at mousedown the selection
+      // may already be wrong or getCursorPosition() may return end (fallback). Use the position
+      // we last saw while the selection was in the editor.
+      insertPositionRef.current = lastCursorPositionInEditorRef.current;
+    },
+    insertSection(type, onDone) {
+      if (type === 'heading' || type === 'instruction') {
+        insertElement(type, onDone);
+        // Do not schedule extra focus() here: insertElement already focuses and places cursor
+        // (inline and in a deferred callback). An extra focus() can run after our place-cursor
+        // and on Safari/iOS can reset the selection to the end of the contenteditable.
+      }
     },
   }), [setQuery, setSelectedIndex, setShowDropdown]);
 
@@ -185,6 +204,39 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
     return 0;
   };
 
+  // Length of one direct child of the editor in the flat text (for getCursorPosition when container is editor)
+  const getLengthOfEditorChild = (child, editor, childIndex) => {
+    const nextSibling = editor.childNodes[childIndex + 1];
+    const nextIsBR = nextSibling?.tagName === 'BR';
+    const hasNext = childIndex < editor.childNodes.length - 1;
+    const newlineAfter = nextIsBR || hasNext;
+    if (child.nodeType === Node.TEXT_NODE) {
+      return (child.textContent || '').replace(/\u200B/g, '').length;
+    }
+    if (child.tagName === 'BR') return 1;
+    if (child.hasAttribute('data-heading') || child.hasAttribute('data-instruction')) {
+      return getElementMarkerLength(child) + (newlineAfter ? 1 : 0);
+    }
+    if (child.hasAttribute('data-chord')) {
+      return getChordMarkerLength(child);
+    }
+    if (child.tagName === 'DIV' || child.tagName === 'P') {
+      const blockText = child.textContent.replace(/\u200B/g, '').trim();
+      const isEmpty = blockText === '' && child.children.length === 0;
+      if (isEmpty) return 1;
+      let len = 0;
+      if (hasNext) len += 1;
+      const innerText = Array.from(child.childNodes).reduce((acc, n) => {
+        if (n.nodeType === Node.TEXT_NODE) return acc + (n.textContent || '').replace(/\u200B/g, '');
+        return acc;
+      }, '');
+      len += innerText.length;
+      if (childIndex > 0) len += 1;
+      return len;
+    }
+    return 0;
+  };
+
   // Get cursor position in contenteditable (accounting for <br> tags, chord spans, and heading/instruction elements)
   // Simplified approach: traverse DOM in same order as getTextFromEditor() and count characters until cursor
   const getCursorPosition = () => {
@@ -199,8 +251,35 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
     const containerNode = isCollapsed ? range.endContainer : range.startContainer;
     const offset = isCollapsed ? range.endOffset : range.startOffset;
     
-    // If cursor is at the editor level (empty or end), return text length
-    if (containerNode === editorRef.current || containerNode === editorRef.current.parentNode) {
+    // When cursor is at the editor level (container is the editor div), offset may be child index
+    // (0 = before first child) or 1-based in some browsers. Use anchorNode when it's a direct child
+    // to get the true position; otherwise sum lengths of the first N children.
+    if (containerNode === editorRef.current) {
+      const children = editorRef.current.childNodes;
+      const anchorNode = selection.anchorNode;
+      // If cursor is inside a direct child (anchorNode is that child), use its index + offset within it
+      const directIndex = Array.from(children).indexOf(anchorNode);
+      if (directIndex >= 0) {
+        let pos = 0;
+        for (let i = 0; i < directIndex; i++) {
+          pos += getLengthOfEditorChild(children[i], editorRef.current, i);
+        }
+        if (anchorNode.nodeType === Node.TEXT_NODE) {
+          const beforeCursor = (anchorNode.textContent || '').substring(0, offset).replace(/\u200B/g, '');
+          pos += beforeCursor.length;
+        }
+        return pos;
+      }
+      // Cursor between children: offset can be 1-based (offset 1 = before first child, 2 = before second).
+      // Use (offset - 2) so cursor "on empty line" (offset 2) inserts at 0; avoids empty line above heading.
+      const numChildrenToSum = Math.max(0, offset - 2);
+      let pos = 0;
+      for (let i = 0; i < numChildrenToSum && i < children.length; i++) {
+        pos += getLengthOfEditorChild(children[i], editorRef.current, i);
+      }
+      return pos;
+    }
+    if (containerNode === editorRef.current.parentNode) {
       const fullText = getTextFromEditor();
       return fullText.length;
     }
@@ -381,6 +460,11 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
   
   // Set cursor position in contenteditable (accounting for <br> tags, chord spans, and heading/instruction elements)
   const setCursorPosition = (pos) => {
+    // #region agent log
+    const caller = setCursorCallerRef.current || 'unknown';
+    setCursorCallerRef.current = '';
+    fetch('http://127.0.0.1:7242/ingest/3af9d058-7c69-4113-abcd-1fb30bbd0cf0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StyledChordEditor.jsx:setCursorPosition',message:'setCursorPosition called',data:{pos,caller,valueLen:(value||'').length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     const selection = window.getSelection();
     const range = document.createRange();
     
@@ -468,10 +552,22 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
         // Calculate heading/instruction marker length
         const elementLength = getElementMarkerLength(item.node);
         if (currentPos + elementLength >= pos) {
-          // Position is within or right after the element
-          // Place cursor right after the element
-          range.setStartAfter(item.node);
-          range.setEndAfter(item.node);
+          // Position is within the heading/instruction element: place cursor inside it
+          // so the user types in the styled block (not after it)
+          if (item.node.childNodes.length === 0) {
+            range.setStart(item.node, 0);
+            range.setEnd(item.node, 0);
+          } else {
+            const firstChild = item.node.firstChild;
+            if (firstChild.nodeType === Node.TEXT_NODE) {
+              const offsetInElement = Math.min(pos - currentPos, firstChild.textContent.length);
+              range.setStart(firstChild, offsetInElement);
+              range.setEnd(firstChild, offsetInElement);
+            } else {
+              range.setStart(item.node, 0);
+              range.setEnd(item.node, 0);
+            }
+          }
           selection.removeAllRanges();
           selection.addRange(range);
           return;
@@ -520,8 +616,8 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
           text += child.textContent.replace(/\u200B/g, '');
         } else if (child.nodeType === Node.ELEMENT_NODE) {
           if (child.hasAttribute('data-heading')) {
-            // This is a styled heading element
-            const headingText = child.getAttribute('data-heading-text') || child.textContent.trim();
+            // This is a styled heading element (strip placeholder \u200B so we don't save it)
+            const headingText = (child.getAttribute('data-heading-text') || child.textContent.trim()).replace(/\u200B/g, '');
             text += `{heading:${headingText}}`;
             // Check if next sibling is a BR and skip it (we'll add newline here)
             const nextSibling = child.nextSibling;
@@ -533,8 +629,8 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
               text += '\n';
             }
           } else if (child.hasAttribute('data-instruction')) {
-            // This is a styled instruction element
-            const instructionText = child.getAttribute('data-instruction-text') || child.textContent.trim();
+            // This is a styled instruction element (strip placeholder \u200B so we don't save it)
+            const instructionText = (child.getAttribute('data-instruction-text') || child.textContent.trim()).replace(/\u200B/g, '');
             text += `{instruction:${instructionText}}`;
             // Check if next sibling is a BR and skip it (we'll add newline here)
             const nextSibling = child.nextSibling;
@@ -634,41 +730,36 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
     // Parse text and create styled HTML, handling line breaks, headings, and instructions
     const lines = text.split('\n');
     const fragment = document.createDocumentFragment();
-    
+
     lines.forEach((line, lineIndex) => {
-      // Check if this line is a heading
-      const headingMatch = line.match(/^\{heading:([^}]+)\}$/);
+      // Check if this line is a heading (allow empty so {heading:} renders as styled block)
+      const headingMatch = line.match(/^\{heading:(.*)\}$/);
       if (headingMatch) {
         const headingText = headingMatch[1].trim();
         const p = document.createElement('p');
-        p.className = 'text-lg font-bold text-gray-800 mt-4 mb-2 first:mt-0';
+        p.className = 'text-lg font-bold text-gray-800 mt-4 mb-0 first:mt-0';
         p.setAttribute('data-heading', 'true');
         p.setAttribute('data-heading-text', headingText);
         p.setAttribute('contenteditable', 'true');
-        p.textContent = headingText;
+        // Use zero-width space when empty so cursor can be placed inside (empty elements can misbehave)
+        p.textContent = headingText || '\u200B';
         fragment.appendChild(p);
-        // Add line break after heading (except after last line)
-        if (lineIndex < lines.length - 1) {
-          fragment.appendChild(document.createElement('br'));
-        }
+        // No <br> after heading: the block <p> already forces the next content onto the next line
         return;
       }
       
-      // Check if this line is an instruction
-      const instructionMatch = line.match(/^\{instruction:([^}]+)\}$/);
+      // Check if this line is an instruction (allow empty so {instruction:} renders as styled block)
+      const instructionMatch = line.match(/^\{instruction:(.*)\}$/);
       if (instructionMatch) {
         const instructionText = instructionMatch[1].trim();
         const p = document.createElement('p');
-        p.className = 'text-sm italic text-gray-600 my-2 border-l-2 border-gray-300 pl-3';
+        p.className = 'text-sm italic text-gray-600 mt-2 mb-0 border-l-2 border-gray-300 pl-3';
         p.setAttribute('data-instruction', 'true');
         p.setAttribute('data-instruction-text', instructionText);
         p.setAttribute('contenteditable', 'true');
-        p.textContent = instructionText;
+        p.textContent = instructionText || '\u200B';
         fragment.appendChild(p);
-        // Add line break after instruction (except after last line)
-        if (lineIndex < lines.length - 1) {
-          fragment.appendChild(document.createElement('br'));
-        }
+        // No <br> after instruction: the block <p> already forces the next content onto the next line
         return;
       }
       
@@ -742,7 +833,7 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
         fragment.appendChild(document.createElement('br'));
       }
     });
-    
+
     editorRef.current.innerHTML = '';
     editorRef.current.appendChild(fragment);
   };
@@ -751,24 +842,35 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
   const lastValueRef = useRef(value);
   useEffect(() => {
     if (!editorRef.current) return;
+    // #region agent log
+    const willSkipSync = !!skipSyncRef.current;
+    const valueEqLast = value === lastValueRef.current;
+    const currentText = getTextFromEditor();
+    const willOverwrite = !valueEqLast && currentText !== value;
+    fetch('http://127.0.0.1:7242/ingest/3af9d058-7c69-4113-abcd-1fb30bbd0cf0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StyledChordEditor.jsx:syncEffect',message:'sync effect run',data:{valueLen:(value||'').length,lastValueLen:(lastValueRef.current||'').length,currentTextLen:currentText.length,willSkipSync,valueEqLast,willOverwrite},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     if (skipSyncRef.current) {
       skipSyncRef.current = false;
       lastValueRef.current = value;
       return;
     }
     if (value === lastValueRef.current) return;
-    
-    lastValueRef.current = value;
-    const currentText = getTextFromEditor();
     if (currentText !== value) {
       const cursorPos = getCursorPosition();
+      lastValueRef.current = value;
       updateEditorContent(value || '');
-      // Restore cursor position after a brief delay
+      // Restore cursor after a brief delay; skip if insertElement ran in between (it sets suppressSyncCursorRef)
       setTimeout(() => {
+        // #region agent log
+        const suppress = suppressSyncCursorRef.current;
+        const willCallSetCursor = !suppress;
+        fetch('http://127.0.0.1:7242/ingest/3af9d058-7c69-4113-abcd-1fb30bbd0cf0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StyledChordEditor.jsx:syncEffect-setTimeout',message:'sync effect setTimeout callback',data:{suppress,willCallSetCursor,cursorPos,valueLen:(value||'').length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        if (suppressSyncCursorRef.current) return;
         try {
+          setCursorCallerRef.current = 'sync-effect';
           setCursorPosition(Math.min(cursorPos, (value || '').length));
         } catch (e) {
-          // If cursor positioning fails, just set to end
           const range = document.createRange();
           const selection = window.getSelection();
           range.selectNodeContents(editorRef.current);
@@ -777,8 +879,37 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
           selection.addRange(range);
         }
       }, 0);
+    } else {
+      lastValueRef.current = value;
     }
   }, [value]);
+
+  // Place cursor after insert-section: runs after commit so sync effect and re-render have run
+  useEffect(() => {
+    const pos = pendingSectionCursorRef.current;
+    if (pos === null || !editorRef.current) return;
+    pendingSectionCursorRef.current = null;
+    requestAnimationFrame(() => {
+      if (!editorRef.current) return;
+      setCursorCallerRef.current = 'insertElement-effect';
+      setCursorPosition(pos);
+    });
+  }, [value]);
+
+  // Keep last known cursor position when selection is in editor (for Section mousedown capture)
+  useEffect(() => {
+    const onSelectionChange = () => {
+      if (!editorRef.current) return;
+      const sel = window.getSelection();
+      if (sel?.anchorNode && editorRef.current.contains(sel.anchorNode)) {
+        try {
+          lastCursorPositionInEditorRef.current = getCursorPosition();
+        } catch (_) {}
+      }
+    };
+    document.addEventListener('selectionchange', onSelectionChange);
+    return () => document.removeEventListener('selectionchange', onSelectionChange);
+  }, []);
 
   const handleKeyDown = (e) => {
     if (showDropdown) {
@@ -801,6 +932,7 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
             lastValueRef.current = newText;
             onChange({ target: { value: newText } });
             setTimeout(() => {
+              setCursorCallerRef.current = 'backspace-chord';
               setCursorPosition(chordInfo.start);
               editorRef.current?.focus();
             }, 0);
@@ -817,6 +949,7 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
             lastValueRef.current = newText;
             onChange({ target: { value: newText } });
             setTimeout(() => {
+              setCursorCallerRef.current = 'delete-chord';
               setCursorPosition(chordInfo.start);
               editorRef.current?.focus();
             }, 0);
@@ -824,42 +957,89 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
           }
         }
       } else if (e.key === 'Enter') {
-        // Intercept Enter key to prevent browser from creating DIV/P elements
-        // Instead, manually insert a line break
+        const selection = window.getSelection();
+        if (selection.rangeCount === 0 || !editorRef.current) {
+          // Fall through to normal Enter if needed
+        } else {
+          const anchorNode = selection.anchorNode;
+          const el = anchorNode && (anchorNode.nodeType === Node.ELEMENT_NODE ? anchorNode : anchorNode.parentElement);
+          const sectionEl = el && el.closest && el.closest('[data-heading], [data-instruction]');
+          if (sectionEl && editorRef.current.contains(sectionEl)) {
+            // Cursor is inside a heading or instruction: close section, newline, return to lyrics
+            e.preventDefault();
+            e.stopPropagation();
+            justHandledEnterRef.current = true;
+            skipSyncRef.current = true;
+
+            const currentText = getTextFromEditor();
+            const cursorPos = getCursorPosition();
+            let lineStart = 0;
+            for (let i = cursorPos - 1; i >= 0; i--) {
+              if (currentText[i] === '\n') {
+                lineStart = i + 1;
+                break;
+              }
+            }
+            let lineEnd = currentText.length;
+            for (let i = cursorPos; i < currentText.length; i++) {
+              if (currentText[i] === '\n') {
+                lineEnd = i;
+                break;
+              }
+            }
+            const line = currentText.substring(lineStart, lineEnd);
+            if (/^\{heading:.*\}$/.test(line) || /^\{instruction:.*\}$/.test(line)) {
+              const before = currentText.substring(0, lineEnd);
+              const after = currentText.substring(lineEnd);
+              const newText = before + '\n' + after;
+              const newCursorPos = lineEnd + 1;
+
+              skipSyncRef.current = true;
+              updateEditorContent(newText);
+              lastValueRef.current = newText;
+              onChange({ target: { value: newText } });
+              setTimeout(() => {
+                setCursorCallerRef.current = 'enter-section';
+                setCursorPosition(newCursorPos);
+                editorRef.current?.focus();
+              }, 0);
+              setTimeout(() => {
+                justHandledEnterRef.current = false;
+                skipSyncRef.current = false;
+              }, 100);
+              return;
+            }
+            justHandledEnterRef.current = false;
+            skipSyncRef.current = false;
+          }
+        }
+
+        // Default: intercept Enter to prevent browser from creating DIV/P elements, insert <br>
         e.preventDefault();
         e.stopPropagation();
         if (editorRef.current) {
-          // Set flags BEFORE any DOM manipulation to prevent interference
-          // This ensures handleInput and sync effect see the flags immediately
           justHandledEnterRef.current = true;
           skipSyncRef.current = true;
-          
+
           const selection = window.getSelection();
           if (selection.rangeCount === 0) {
             justHandledEnterRef.current = false;
             skipSyncRef.current = false;
             return;
           }
-          
+
           const range = selection.getRangeAt(0);
           const br = document.createElement('br');
-          
-          // Insert BR at cursor position
           range.deleteContents();
           range.insertNode(br);
-          
-          // Move cursor after the BR
           range.setStartAfter(br);
           range.collapse(true);
           selection.removeAllRanges();
           selection.addRange(range);
-          
-          // Update the text value by reading from DOM
+
           const text = getTextFromEditor();
           lastValueRef.current = text;
           onChange({ target: { value: text } });
-          
-          // Reset flags after a brief delay to allow any pending events to be ignored
           setTimeout(() => {
             justHandledEnterRef.current = false;
             skipSyncRef.current = false;
@@ -898,13 +1078,18 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
     }
     
     // Update data attributes for headings and instructions when their content changes
-    // Only do this if headings/instructions might exist (optimization)
+    // If user deleted all content from a heading/instruction, replace with BR so following lyrics aren't styled as heading
     if (editorRef.current) {
-      // Use a single query to check for both headings and instructions
       const specialElements = editorRef.current.querySelectorAll('[data-heading], [data-instruction]');
       if (specialElements.length > 0) {
-        specialElements.forEach((el) => {
-          const text = el.textContent.trim();
+        Array.from(specialElements).forEach((el) => {
+          const text = (el.textContent || '').replace(/\u200B/g, '').trim();
+          if (text === '') {
+            // Empty heading/instruction: remove the block so cursor and following content are normal lyrics
+            const br = document.createElement('br');
+            el.parentNode?.replaceChild(br, el);
+            return;
+          }
           if (el.hasAttribute('data-heading')) {
             el.setAttribute('data-heading-text', text);
           } else if (el.hasAttribute('data-instruction')) {
@@ -970,6 +1155,12 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
     // This ensures we read the DOM after all synchronous DOM modifications (like normalization) are complete
     inputDebounceTimerRef.current = setTimeout(() => {
       const text = getTextFromEditor();
+      // Keep last known cursor position for Section menu (captureCursorPosition uses it)
+      try {
+        if (editorRef.current?.contains(document.activeElement)) {
+          lastCursorPositionInEditorRef.current = getCursorPosition();
+        }
+      } catch (_) {}
       // Only call onChange if text actually changed (avoid unnecessary re-renders)
       if (text !== lastValueRef.current) {
         lastValueRef.current = text;
@@ -1072,11 +1263,13 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
     // iOS needs the first frame for DOM update, second frame for cursor rendering
     requestAnimationFrame(() => {
       editorRef.current?.focus();
+      setCursorCallerRef.current = 'insertChord';
       setCursorPosition(newCursorPos);
       
       // Second RAF specifically for iOS Safari cursor rendering
       requestAnimationFrame(() => {
         if (editorRef.current && document.activeElement === editorRef.current) {
+          setCursorCallerRef.current = 'insertChord-raf2';
           setCursorPosition(newCursorPos);
         }
       });
@@ -1099,24 +1292,32 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
     }
   };
 
-  const insertElement = (elementType) => {
+  const insertElement = (elementType, onSectionInsertDone) => {
     if (!editorRef.current) return;
     
     // Get text directly from editor to ensure we have the most current value
     const currentText = getTextFromEditor();
     let insertPos = insertPositionRef.current;
     
+    // If captured position is "end" (common when Section mousedown loses selection), use last known
+    if (insertPos === currentText.length && currentText.length > 0 && lastCursorPositionInEditorRef.current < currentText.length) {
+      insertPos = lastCursorPositionInEditorRef.current;
+    }
     // Clamp insert position to valid range
     if (insertPos < 0) insertPos = 0;
     if (insertPos > currentText.length) insertPos = currentText.length;
     
     
     const before = currentText.substring(0, insertPos);
-    const after = currentText.substring(insertPos);
+    const originalAfter = currentText.substring(insertPos);
+    // Honour one blank line if the user added it (e.g. Return twice before typing heading), but strip excess
+    const hadBlankLineAbove = /^[\n\r]/.test(originalAfter);
+    let after = originalAfter.replace(/^[\n\r]+/, '');
     
     // Check if we're at the start of a line (or empty line)
     const isAtLineStart = before === '' || before.endsWith('\n');
-    const isAtLineEnd = after === '' || after.startsWith('\n');
+    const nextCharIsNewline = after.length > 0 && (after[0] === '\n' || after[0] === '\r');
+    const isAtLineEnd = after === '' || nextCharIsNewline;
     
     // Determine what to insert
     let marker = '';
@@ -1132,29 +1333,105 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
       newlineBefore = '\n';
     }
     
-    // Add newline after if not at end
+    // If user had created a blank line above (e.g. Return twice), keep exactly one blank line before the heading
+    const blankLineBeforeMarker = hadBlankLineAbove ? '\n' : '';
+    
+    // Add exactly one newline after marker when there is following content (so no extra empty lines)
     let newlineAfter = '';
-    if (!isAtLineEnd && !after.startsWith('\n')) {
+    if (after.length > 0 && !nextCharIsNewline) {
       newlineAfter = '\n';
     }
     
-    const newText = before + newlineBefore + marker + newlineAfter + after;
-    
-    // Update DOM directly and skip sync to prevent re-render interference
-    skipSyncRef.current = true;
+    const newText = before + newlineBefore + blankLineBeforeMarker + marker + newlineAfter + after;
+    // Position at start of marker so setCursorPosition places cursor *inside* the heading (not after it)
+    const targetPos = insertPos + newlineBefore.length + blankLineBeforeMarker.length;
+
+    // Update DOM and set cursor in same tick so nothing can overwrite the selection.
     updateEditorContent(newText);
     lastValueRef.current = newText;
+    skipSyncRef.current = true;
+    suppressSyncCursorRef.current = true; // any pending sync-effect setCursorPosition will skip
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/3af9d058-7c69-4113-abcd-1fb30bbd0cf0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StyledChordEditor.jsx:insertElement',message:'insertElement set suppress true',data:{elementType,targetPos,newTextLen:newText.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+    // Notify parent synchronously; effect will place cursor after commit
     onChange({ target: { value: newText } });
-    
-    // Set cursor position inside the marker (after the colon)
+    pendingSectionCursorRef.current = targetPos;
+
+    const placeCursorInElement = (element) => {
+      if (!element || !editorRef.current) return;
+      if (!editorRef.current.contains(element)) return;
+      const selection = window.getSelection();
+      const range = document.createRange();
+      const cursorNode = element.firstChild && element.firstChild.nodeType === Node.TEXT_NODE
+        ? element.firstChild
+        : element;
+      range.setStart(cursorNode, 0);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    };
+
+    editorRef.current?.focus({ preventScroll: true });
+
+    // Parent already updated (onChange above). Close dropdown; cursor is placed in useEffect after commit.
     setTimeout(() => {
-      const newCursorPos = insertPos + newlineBefore.length + marker.length - 1; // -1 to position before closing brace
-      setCursorPosition(newCursorPos);
-      editorRef.current?.focus();
+      setShowDropdown(false);
+      setQuery('');
+      setTimeout(() => {
+        setTimeout(() => {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/3af9d058-7c69-4113-abcd-1fb30bbd0cf0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StyledChordEditor.jsx:insertElement',message:'insertElement clear suppressSyncCursorRef',data:{},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
+          suppressSyncCursorRef.current = false;
+        }, 50);
+        onSectionInsertDone?.();
+      }, 0);
     }, 0);
-    
-    setShowDropdown(false);
-    setQuery('');
+  };
+
+  // Find the heading or instruction element at the given character position (used after insertElement)
+  const findElementAtPosition = (editor, pos) => {
+    if (!editor) return null;
+    const allNodes = [];
+    const collectNodes = (node) => {
+      for (let child = node.firstChild; child; child = child.nextSibling) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          allNodes.push({ type: 'text', node: child });
+        } else if (child.tagName === 'BR') {
+          allNodes.push({ type: 'br', node: child });
+        } else if (child.nodeType === Node.ELEMENT_NODE && child.hasAttribute('data-chord')) {
+          allNodes.push({ type: 'chord', node: child });
+        } else if (child.nodeType === Node.ELEMENT_NODE && (child.hasAttribute('data-heading') || child.hasAttribute('data-instruction'))) {
+          allNodes.push({ type: 'element', node: child });
+        } else if (child.nodeType === Node.ELEMENT_NODE) {
+          collectNodes(child);
+        }
+      }
+    };
+    collectNodes(editor);
+    let currentPos = 0;
+    for (let i = 0; i < allNodes.length; i++) {
+      const item = allNodes[i];
+      if (item.type === 'text') {
+        const effectiveLength = (item.node.textContent.replace(/\u200B/g, '') || '').length;
+        if (effectiveLength === 0) continue;
+        if (currentPos <= pos && pos < currentPos + effectiveLength) return null;
+        currentPos += effectiveLength;
+      } else if (item.type === 'br') {
+        if (currentPos <= pos && pos < currentPos + 1) return null;
+        currentPos += 1;
+      } else if (item.type === 'chord') {
+        const chordLength = getChordMarkerLength(item.node);
+        if (currentPos <= pos && pos < currentPos + chordLength) return null;
+        currentPos += chordLength;
+      } else if (item.type === 'element') {
+        const elementLength = getElementMarkerLength(item.node);
+        if (currentPos <= pos && pos < currentPos + elementLength) return item.node;
+        currentPos += elementLength;
+      }
+    }
+    return null;
   };
 
   // Handle custom chord save

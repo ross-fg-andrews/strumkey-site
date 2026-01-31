@@ -12,7 +12,7 @@ import StyledChordEditor from '../components/StyledChordEditor';
 import ChordDiagram from '../components/ChordDiagram';
 import { findChord } from '../utils/chord-library';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
-import { MicrophoneStageIcon, ChordIcon, PlusIcon } from '../utils/icons';
+import { MicrophoneStageIcon, ChordIcon, PlusIcon, ImportIcon, TextboxIcon } from '../utils/icons';
 import PDFImportModal from '../components/PDFImportModal';
 import { useEditingSong } from '../contexts/EditingSongContext';
 
@@ -50,6 +50,7 @@ export default function SongSheet() {
   const { user } = useAuth();
   const { setEditingSong } = useEditingSong() || {};
   const chordEditorRef = useRef(null);
+  const sectionButtonRef = useRef(null);
   const scrollContainerRef = useRef(null);
 
   const [chordMode, setChordMode] = useState('inline'); // 'inline' or 'above'
@@ -62,6 +63,7 @@ export default function SongSheet() {
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [sectionDropdownOpen, setSectionDropdownOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [chordsPanelVisible, setChordsPanelVisible] = useState(true);
 
@@ -75,17 +77,19 @@ export default function SongSheet() {
 
   useEffect(() => {
     const vv = typeof window !== 'undefined' ? window.visualViewport : null;
-    if (!vv || !isEditing) return;
+    const showEditUI = location.pathname === '/songs/new' || isEditing;
+    if (!vv || !showEditUI) return;
     const onResize = () => setEditViewportHeight(vv.height);
     onResize();
     vv.addEventListener('resize', onResize);
     return () => vv.removeEventListener('resize', onResize);
-  }, [isEditing]);
+  }, [isEditing, location.pathname]);
 
   useEffect(() => {
-    setEditingSong?.(isEditing);
+    const showEditUI = location.pathname === '/songs/new' || isEditing;
+    setEditingSong?.(showEditUI);
     return () => setEditingSong?.(false);
-  }, [isEditing, setEditingSong]);
+  }, [isEditing, location.pathname, setEditingSong]);
 
   const menuRef = useRef(null);
   const songSelectorRef = useRef(null);
@@ -250,6 +254,27 @@ export default function SongSheet() {
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [songSelectorOpen]);
+
+  // Close section dropdown when clicking outside or pressing Escape
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (sectionButtonRef.current && !sectionButtonRef.current.contains(event.target)) {
+        setSectionDropdownOpen(false);
+      }
+    }
+    function handleEscape(e) {
+      if (e.key === 'Escape') setSectionDropdownOpen(false);
+    }
+
+    if (sectionDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleEscape);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener('keydown', handleEscape);
+      };
+    }
+  }, [sectionDropdownOpen]);
 
   // Parse chords from JSON string (must be before early returns for hooks)
   // Always ensure chords is an array to maintain consistent hook dependencies
@@ -602,90 +627,151 @@ export default function SongSheet() {
     );
   }
 
+  // Shared import handler for create and edit modes
+  const handleImport = (importedData) => {
+    if (importedData.title) setTitle(importedData.title);
+    if (importedData.artist) setArtist(importedData.artist);
+    if (importedData.lyricsText) setLyricsText(importedData.lyricsText);
+  };
+
+  const instructionalText = 'Type or paste your lyrics below. Add chords, section headings or instructions either by using the buttons in the toolbar above, or pressing the / key.';
+
   // Create Mode
   if (isCreateMode) {
-    const handleImport = (importedData) => {
-      // Pre-fill form fields with imported data
-      if (importedData.title) {
-        setTitle(importedData.title);
-      }
-      if (importedData.artist) {
-        setArtist(importedData.artist);
-      }
-      if (importedData.lyricsText) {
-        setLyricsText(importedData.lyricsText);
-      }
-    };
-
     return (
-      <div>
-        {/* Save and Cancel buttons above the title */}
-        <div className="flex gap-4 mb-6">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="btn btn-primary"
-          >
-            {saving ? 'Saving...' : 'Save'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowImportModal(true)}
-            disabled={saving}
-            className="btn btn-secondary"
-          >
-            Import
-          </button>
-          <button
-            onClick={handleCancel}
-            disabled={saving}
-            className="btn btn-secondary"
-          >
-            Cancel
-          </button>
-        </div>
-
-        {/* PDF Import Modal */}
+      <>
         <PDFImportModal
           isOpen={showImportModal}
           onClose={() => setShowImportModal(false)}
           onImport={handleImport}
         />
-
-        {/* Editable Title */}
-        <div className="mb-6">
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Song Title"
-            className="heading-alice mb-2 w-full bg-transparent border-b-2 border-transparent focus:border-gray-300 outline-none p-0 transition-colors placeholder:text-gray-400"
-          />
-          
-          {/* Editable Artist */}
-          <input
-            type="text"
-            value={artist}
-            onChange={(e) => setArtist(e.target.value)}
-            placeholder="Artist Name"
-            className="text-xl text-gray-600 w-full bg-transparent border-b-2 border-transparent focus:border-gray-300 outline-none p-0 transition-colors placeholder:text-gray-500"
-          />
-        </div>
-
-        {/* Editable Lyrics */}
-        <div>
-          <StyledChordEditor
-            value={lyricsText}
-            onChange={(e) => setLyricsText(e.target.value)}
-            placeholder="Paste your lyrics here.\n\nPress / to add chords inline with your lyrics.\n\nExample:\nAmazing [C]grace how [G]sweet the [Am]sound\nThat saved a [F]wretch like [C]me"
-            rows={30}
-            className="w-full p-0 border-none outline-none focus:outline-none bg-transparent text-base leading-relaxed resize-none placeholder:text-gray-400"
-            instrument={instrument}
-            tuning={tuning}
-            userId={user?.id}
-          />
-        </div>
-      </div>
+        <EditModeScrollWrapper
+          isEditing={true}
+          scrollContainerRef={scrollContainerRef}
+          editViewportHeight={editViewportHeight}
+          renderBanner={() => (
+            <div className="sticky top-0 left-0 right-0 bg-gray-50 z-50">
+              <div className="w-full px-4 xl:container xl:mx-auto xl:pl-16">
+                <div className="flex items-center justify-between py-3">
+                  <div className="flex items-center gap-3">
+                    <span className="h-11 flex items-center flex-shrink-0" aria-hidden>
+                      <PlusIcon weight="light" size={24} className="text-gray-600" />
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => chordEditorRef.current?.openChordModal?.()}
+                      className="h-11 min-w-[44px] flex flex-col items-center justify-center gap-0.5 text-gray-600 hover:text-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded px-2 text-base font-normal"
+                      aria-label="Insert chord"
+                    >
+                      <ChordIcon weight="light" size={24} className="flex-shrink-0" />
+                      <span>Chord</span>
+                    </button>
+                    <div className="relative" ref={sectionButtonRef}>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          chordEditorRef.current?.captureCursorPosition?.();
+                        }}
+                        onClick={() => setSectionDropdownOpen((open) => !open)}
+                        className="h-11 min-w-[44px] flex flex-col items-center justify-center gap-0.5 text-gray-600 hover:text-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded px-2 text-base font-normal"
+                        aria-label="Insert section"
+                        aria-expanded={sectionDropdownOpen}
+                        aria-haspopup="menu"
+                      >
+                        <TextboxIcon weight="light" size={24} className="flex-shrink-0" />
+                        <span>Section</span>
+                      </button>
+                      {sectionDropdownOpen && (
+                        <div className="absolute left-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10 py-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              chordEditorRef.current?.insertSection?.('heading', () => setSectionDropdownOpen(false));
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                          >
+                            Heading
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              chordEditorRef.current?.insertSection?.('instruction', () => setSectionDropdownOpen(false));
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                          >
+                            Instruction
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowImportModal(true)}
+                      disabled={saving}
+                      className="h-11 px-4 flex items-center gap-2 text-base font-normal text-gray-600 hover:text-gray-800 disabled:opacity-50 rounded-lg"
+                      aria-label="Import from PDF"
+                    >
+                      <ImportIcon weight="light" size={18} className="flex-shrink-0" />
+                      Import
+                    </button>
+                    <div className="h-5 w-px bg-gray-300 flex-shrink-0" aria-hidden />
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handleCancel}
+                        disabled={saving}
+                        className="h-11 px-4 flex items-center text-base font-normal text-gray-600 hover:text-gray-800 disabled:opacity-50 rounded-lg"
+                      >
+                        Cancel
+                      </button>
+                    <button
+                      onClick={handleSave}
+                      disabled={saving}
+                      className="btn btn-primary text-base font-normal h-11 min-h-[44px] flex items-center px-8"
+                    >
+                      {saving ? 'Saving...' : 'Save'}
+                    </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        >
+          <div className="mb-6">
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Song Title"
+              className="heading-alice mb-2 w-full bg-transparent border-b-2 border-transparent focus:border-gray-300 outline-none p-0 transition-colors placeholder:text-gray-400"
+            />
+            <input
+              type="text"
+              value={artist}
+              onChange={(e) => setArtist(e.target.value)}
+              placeholder="Artist Name"
+              className="text-xl text-gray-600 w-full bg-transparent border-b-2 border-transparent focus:border-gray-300 outline-none p-0 transition-colors placeholder:text-gray-500"
+            />
+          </div>
+          <div>
+            <p className="text-sm text-gray-600 mb-4">{instructionalText}</p>
+            <StyledChordEditor
+              ref={chordEditorRef}
+              value={lyricsText}
+              onChange={(e) => setLyricsText(e.target.value)}
+              placeholder=""
+              rows={30}
+              className="w-full p-0 border-none outline-none focus:outline-none bg-transparent text-base leading-relaxed resize-none placeholder:text-gray-400"
+              instrument={instrument}
+              tuning={tuning}
+              userId={user?.id}
+            />
+          </div>
+        </EditModeScrollWrapper>
+      </>
     );
   }
 
@@ -739,6 +825,14 @@ export default function SongSheet() {
         </div>
       )}
 
+      {isEditing && (
+        <PDFImportModal
+          isOpen={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          onImport={handleImport}
+        />
+      )}
+
       <EditModeScrollWrapper
         isEditing={isEditing}
         scrollContainerRef={scrollContainerRef}
@@ -760,10 +854,65 @@ export default function SongSheet() {
                     <ChordIcon weight="light" size={24} className="flex-shrink-0" />
                     <span>Chord</span>
                   </button>
+                  <div className="relative" ref={sectionButtonRef}>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        chordEditorRef.current?.captureCursorPosition?.();
+                      }}
+                      onClick={() => setSectionDropdownOpen((open) => !open)}
+                      className="h-11 min-w-[44px] flex flex-col items-center justify-center gap-0.5 text-gray-600 hover:text-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded px-2 text-base font-normal"
+                      aria-label="Insert section"
+                      aria-expanded={sectionDropdownOpen}
+                      aria-haspopup="menu"
+                    >
+                      <TextboxIcon weight="light" size={24} className="flex-shrink-0" />
+                      <span>Section</span>
+                    </button>
+                    {sectionDropdownOpen && (
+                      <div className="absolute left-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10 py-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            chordEditorRef.current?.insertSection?.('heading', () => setSectionDropdownOpen(false));
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                        >
+                          Heading
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            chordEditorRef.current?.insertSection?.('instruction', () => setSectionDropdownOpen(false));
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                        >
+                          Instruction
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleCancelEdit}
+                <div className="flex items-center gap-2">
+                  {!lyricsText.trim() && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowImportModal(true)}
+                        disabled={saving}
+                        className="h-11 px-4 flex items-center gap-2 text-base font-normal text-gray-600 hover:text-gray-800 disabled:opacity-50 rounded-lg"
+                        aria-label="Import from PDF"
+                      >
+                        <ImportIcon weight="light" size={18} className="flex-shrink-0" />
+                        Import
+                      </button>
+                      <div className="h-5 w-px bg-gray-300 flex-shrink-0" aria-hidden />
+                    </>
+                  )}
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleCancelEdit}
                     disabled={saving}
                     className="h-11 px-4 flex items-center text-base font-normal text-gray-600 hover:text-gray-800 disabled:opacity-50 rounded-lg"
                   >
@@ -776,6 +925,7 @@ export default function SongSheet() {
                   >
                     {saving ? 'Saving...' : 'Save'}
                   </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -935,16 +1085,20 @@ export default function SongSheet() {
         {/* Lyrics Section */}
         <div className="flex-1 order-2">
           {isEditing ? (
-            <StyledChordEditor
-              ref={chordEditorRef}
-              value={lyricsText}
-              onChange={(e) => setLyricsText(e.target.value)}
-              rows={30}
-              className="w-full p-0 border-none outline-none focus:outline-none bg-transparent text-base leading-relaxed resize-none font-mono"
-              instrument={instrument}
-              tuning={tuning}
-              userId={user?.id}
-            />
+            <>
+              <p className="text-sm text-gray-600 mb-4">{instructionalText}</p>
+              <StyledChordEditor
+                ref={chordEditorRef}
+                value={lyricsText}
+                onChange={(e) => setLyricsText(e.target.value)}
+                placeholder=""
+                rows={30}
+                className="w-full p-0 border-none outline-none focus:outline-none bg-transparent text-base leading-relaxed resize-none font-mono"
+                instrument={instrument}
+                tuning={tuning}
+                userId={user?.id}
+              />
+            </>
           ) : chordMode === 'inline' ? (
             <div className="space-y-2 font-mono">
               {renderedLyrics.map((line, i) => {
