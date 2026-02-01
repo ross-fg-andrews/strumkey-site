@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { findChord, isCommonChord } from '../utils/chord-library';
+import { findChord, isCommonChord, isCommonChordType } from '../utils/chord-library';
 import { useAllDatabaseChords } from '../db/queries';
 import {
   extractUsedChords,
@@ -132,11 +132,10 @@ export function useChordAutocomplete({
     return filterChords(usedChordNames, query);
   }, [usedChordNames, query]);
 
-  // Library names: all available chord names (not just common) so C6, Am7, etc. can be found
+  // Library names: all matching chord names (include names used in song so alternate positions can appear)
   const libraryFilteredNames = useMemo(() => {
-    const usedSet = new Set(usedChordNames);
-    return filterChords(availableChordNames.filter(c => !usedSet.has(c)), query);
-  }, [usedChordNames, availableChordNames, query]);
+    return filterChords(availableChordNames, query);
+  }, [availableChordNames, query]);
   
   // Expand filtered names into chord entries (only the specific position used).
   // When query is a fret pattern or prefix (e.g. "0", "00", "000", "0003"), expand all used chords then filter by frets.
@@ -205,23 +204,69 @@ export function useChordAutocomplete({
         .filter(matchFrets)
         .map(v => ({ ...v, position: v.position || 1 }));
     }
-    // Name search: expand all matching names to all variations (not just common)
+    // Name search: expand all matching names to all variations, then exclude only the exact voicings used in the song
+    const usedSet = new Set(usedChordNames);
     return libraryFilteredNames.flatMap(chordName => {
       const variations = getVariationsForName(chordName);
-      return variations.map(v => ({ ...v, position: v.position || 1 }));
+      return variations
+        .map(v => ({ ...v, position: v.position || 1 }))
+        .filter(v => {
+          const pos = v.position ?? 1;
+          const key = pos > 1 ? `${v.name}:${v.position}` : v.name;
+          return !usedSet.has(key);
+        });
     });
   }, [query, stringCount, usedChordNames, libraryFilteredNames, allChordVariations, getVariationsForName]);
 
-  // Split into common chords and "all other" for display; combined list has no duplicates
+  // Split into common chords and "all other" for display; combined list has no duplicates.
+  // Sort "All chords": Group 1 = alternate positions of major/7/minor (by type then position), Group 2 = rest (by name then position).
   const { libraryFilteredCommon, libraryFilteredAllForDisplay, libraryFiltered } = useMemo(() => {
     const common = libraryFilteredAll.filter(isCommonChord);
     const allForDisplay = common.length > 0
       ? libraryFilteredAll.filter(c => !isCommonChord(c))
       : libraryFilteredAll;
+
+    const pos = (c) => {
+      const p = Number(c.position);
+      return Number.isInteger(p) && p >= 1 ? p : 1;
+    };
+
+    const group1 = allForDisplay.filter(c => isCommonChordType(c) && pos(c) >= 2);
+    const group2 = allForDisplay.filter(c => !(isCommonChordType(c) && pos(c) >= 2));
+
+    const commonTypeOrder = (suffix, name) => {
+      const s = (suffix || '').trim().toLowerCase();
+      if (s === '' || s === 'major') return 0;
+      if (s === '7') return 1;
+      if (s === 'm' || s === 'minor') return 2;
+      if (name) {
+        const match = name.match(/^[A-Ga-g][#b]?(.*)$/i);
+        const nameSuffix = match ? (match[1] || '') : '';
+        const n = nameSuffix.trim().toLowerCase();
+        if (!n) return 0;
+        if (n === '7' || /^7(\s|$)/.test(n)) return 1;
+        if (n === 'm' || n === 'min' || n === 'minor' || /^m(\s|$)/.test(n) || /^min(\s|$)/.test(n) || /^minor(\s|$)/.test(n)) return 2;
+      }
+      return 0;
+    };
+    const group1Sorted = [...group1].sort((a, b) => {
+      const typeA = commonTypeOrder(a.suffix, a.name);
+      const typeB = commonTypeOrder(b.suffix, b.name);
+      if (typeA !== typeB) return typeA - typeB;
+      return pos(a) - pos(b);
+    });
+    const group2Sorted = [...group2].sort((a, b) => {
+      const nameCmp = (a.name || '').localeCompare(b.name || '');
+      if (nameCmp !== 0) return nameCmp;
+      return pos(a) - pos(b);
+    });
+
+    const sortedAllForDisplay = [...group1Sorted, ...group2Sorted];
+
     return {
       libraryFilteredCommon: common,
-      libraryFilteredAllForDisplay: allForDisplay,
-      libraryFiltered: [...common, ...allForDisplay],
+      libraryFilteredAllForDisplay: sortedAllForDisplay,
+      libraryFiltered: [...common, ...sortedAllForDisplay],
     };
   }, [libraryFilteredAll]);
 

@@ -287,4 +287,37 @@ export function isCommonChord(chord) {
   return false;
 }
 
+/**
+ * Get suffix from chord name (everything after the root note A-G optional #/b).
+ * Used as fallback when chord.suffix is missing or not in our common list.
+ */
+function getSuffixFromChordName(name) {
+  if (!name || typeof name !== 'string') return '';
+  const match = name.match(/^[A-Ga-g][#b]?(.*)$/i);
+  return match ? (match[1] || '').trim().toLowerCase() : '';
+}
+
+/**
+ * Check if a chord has a "common" chord type (major, 7th, or minor) by suffix, with fallback from name.
+ * Used for sorting the "All chords" section: alternate positions of these types appear first.
+ * No check on position or libraryType.
+ * @param {Object} chord - Chord object with suffix and name fields
+ * @returns {boolean} True if suffix (or name-derived suffix) is major, 7, or minor
+ */
+export function isCommonChordType(chord) {
+  if (!chord) return false;
+  const suffix = (chord.suffix || '').trim().toLowerCase();
+  if (suffix === '' || suffix === 'major') return true;
+  if (suffix === '7') return true;
+  if (suffix === 'm' || suffix === 'minor') return true;
+  // Fallback: infer from chord name when suffix is missing or not in our list (e.g. DB uses different values)
+  const nameSuffix = getSuffixFromChordName(chord.name);
+  if (!nameSuffix || nameSuffix === '') return true; // major
+  if (nameSuffix === '7' || /^7(\s|$)/.test(nameSuffix)) return true; // dominant 7 only
+  if (nameSuffix === 'm' || nameSuffix === 'min' || nameSuffix === 'minor' ||
+      /^m(\s|$)/.test(nameSuffix) || /^min(\s|$)/.test(nameSuffix) || /^minor(\s|$)/.test(nameSuffix)) {
+    return true; // minor
+  }
+  return false;
+}
 
