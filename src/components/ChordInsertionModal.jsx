@@ -4,6 +4,17 @@ import ChordDiagram from './ChordDiagram';
 import { normalizeQuery } from '../utils/chord-autocomplete-helpers';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
 
+const chordLabelClass = 'inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium';
+
+function formatFretsForDisplay(frets) {
+  if (!Array.isArray(frets) || frets.length === 0) return '—';
+  return frets.map(f => f === null ? 'x' : String(f)).join('');
+}
+
+function formatPosition(position) {
+  return `Position ${String(position || 1).padStart(2, '0')}`;
+}
+
 /**
  * Modal component for chord insertion
  * Converts the dropdown interface to a modal dialog for better mobile/tablet usability
@@ -174,35 +185,28 @@ export default function ChordInsertionModal({
                           e.stopPropagation();
                           onSelectChord(chordName, chordObj.position);
                         }}
-                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
-                          isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center justify-between gap-3 ${
+                          isSelected ? 'bg-primary-50' : ''
                         }`}
                       >
-                        {chordFrets && (
-                          <div className="flex-shrink-0 flex items-center">
-                            <ChordDiagram
-                              frets={chordFrets}
-                              baseFret={chordObj.baseFret}
-                              chordName=""
-                              instrument={instrument}
-                              tuning={tuning}
-                            />
-                          </div>
-                        )}
-                        <div className="flex-1 flex items-center gap-2 min-w-0">
-                          <span className="font-medium">{formatChordNameForDisplay(chordName)}</span>
-                          {chordObj.position > 1 && (
-                            <span className={`inline-flex items-center justify-center rounded-full text-white text-xs font-medium leading-[1em] min-w-[1em] px-1 ${
-                              isSelected ? 'bg-primary-700' : 'bg-gray-900'
-                            }`}>
-                              {chordObj.position}
-                            </span>
+                        <div className="flex items-center gap-0 min-w-0 flex-shrink">
+                          {chordFrets && (
+                            <div className="flex-shrink-0 flex items-center">
+                              <ChordDiagram
+                                frets={chordFrets}
+                                baseFret={chordObj.baseFret}
+                                chordName=""
+                                instrument={instrument}
+                                tuning={tuning}
+                              />
+                            </div>
                           )}
-                          {isPersonal && (
-                            <span className="text-xs text-yellow-600 flex-shrink-0" title="Personal library">
-                              ⭐
-                            </span>
-                          )}
+                          <span className={chordLabelClass}>{formatChordNameForDisplay(chordName)}</span>
+                        </div>
+                        <div className="flex flex-col items-end text-gray-600 text-sm font-normal flex-shrink-0">
+                          <span>{formatFretsForDisplay(chordFrets)}</span>
+                          <span className="text-gray-500">{formatPosition(chordObj.position)}</span>
+                          {isPersonal && <span className="text-xs">Personal</span>}
                         </div>
                       </button>
                     );
@@ -223,7 +227,7 @@ export default function ChordInsertionModal({
                     const isSelected = globalIndex === selectedIndex;
                     const chordName = chordObj.name || chordObj;
                     const chordFrets = chordObj.frets;
-                    const isPersonal = chordObj.source === 'personal';
+                    const isPersonal = chordObj.source === 'personal' || personalChordNames.has(chordName);
                     
                     return (
                       <button
@@ -235,35 +239,28 @@ export default function ChordInsertionModal({
                           e.stopPropagation();
                           onSelectChord(chordName, chordObj.position);
                         }}
-                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
-                          isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center justify-between gap-3 ${
+                          isSelected ? 'bg-primary-50' : ''
                         }`}
                       >
-                        {chordFrets && (
-                          <div className="flex-shrink-0 flex items-center">
-                            <ChordDiagram
-                              frets={chordFrets}
-                              baseFret={chordObj.baseFret}
-                              chordName=""
-                              instrument={instrument}
-                              tuning={tuning}
-                            />
-                          </div>
-                        )}
-                        <div className="flex-1 flex items-center gap-2 min-w-0">
-                          <span className="font-medium">{formatChordNameForDisplay(chordName)}</span>
-                          {chordObj.position > 1 && (
-                            <span className={`inline-flex items-center justify-center rounded-full text-white text-xs font-medium leading-[1em] min-w-[1em] px-1 ${
-                              isSelected ? 'bg-primary-700' : 'bg-gray-900'
-                            }`}>
-                              {chordObj.position}
-                            </span>
+                        <div className="flex items-center gap-0 min-w-0 flex-shrink">
+                          {chordFrets && (
+                            <div className="flex-shrink-0 flex items-center">
+                              <ChordDiagram
+                                frets={chordFrets}
+                                baseFret={chordObj.baseFret}
+                                chordName=""
+                                instrument={instrument}
+                                tuning={tuning}
+                              />
+                            </div>
                           )}
-                          {isPersonal && (
-                            <span className="text-xs text-yellow-600 flex-shrink-0" title="Personal library">
-                              ⭐
-                            </span>
-                          )}
+                          <span className={chordLabelClass}>{formatChordNameForDisplay(chordName)}</span>
+                        </div>
+                        <div className="flex flex-col items-end text-gray-600 text-sm font-normal flex-shrink-0">
+                          <span>{formatFretsForDisplay(chordFrets)}</span>
+                          <span className="text-gray-500">{formatPosition(chordObj.position)}</span>
+                          {isPersonal && <span className="text-xs">Personal</span>}
                         </div>
                       </button>
                     );
