@@ -91,3 +91,60 @@ export function filterChords(chords, query) {
     chord.toLowerCase().includes(lowerQuery)
   );
 }
+
+/**
+ * Return the number of strings for an instrument/tuning (for fret-pattern length).
+ * Ukulele = 4; guitar = 6 when added.
+ */
+export function getStringCountForInstrument(instrument = 'ukulele', tuning = 'ukulele_standard') {
+  if (instrument === 'guitar') return 6;
+  return 4; // ukulele and default
+}
+
+/**
+ * True when the query is exactly a fret pattern: length === stringCount and every
+ * character is a digit (0-9) or x/X (muted).
+ */
+export function isFretPatternQuery(query, stringCount) {
+  if (!query || typeof query !== 'string') return false;
+  if (query.length !== stringCount) return false;
+  const validFretChar = /^[0-9xX]$/;
+  return [...query].every(char => validFretChar.test(char));
+}
+
+/**
+ * True when the query is a fret-pattern prefix: 0 < length <= stringCount and every
+ * character is a digit (0-9) or x/X. Used to filter chords as the user types (e.g. "0", "00", "000").
+ */
+export function isFretPatternOrPrefixQuery(query, stringCount) {
+  if (!query || typeof query !== 'string') return false;
+  if (query.length === 0 || query.length > stringCount) return false;
+  const validFretChar = /^[0-9xX]$/;
+  return [...query].every(char => validFretChar.test(char));
+}
+
+/**
+ * Build frets string from chord object (same convention as formatFretsForDisplay):
+ * null/undefined → 'x', otherwise String(fret). Compare to normalized pattern (x case-insensitive).
+ */
+export function chordFretsMatchPattern(chordObj, patternStr) {
+  if (!chordObj || !patternStr) return false;
+  const frets = chordObj.frets;
+  if (!Array.isArray(frets) || frets.length === 0) return false;
+  const fretsStr = frets.map(f => f === null || f === undefined ? 'x' : String(f)).join('').toLowerCase();
+  const normalizedPattern = patternStr.toLowerCase();
+  return fretsStr === normalizedPattern;
+}
+
+/**
+ * True when the chord's frets string starts with the given prefix (normalized, case-insensitive).
+ * Used for partial fret input (e.g. "00" matches "0003", "0022").
+ */
+export function chordFretsMatchPrefix(chordObj, prefixStr) {
+  if (!chordObj || !prefixStr) return false;
+  const frets = chordObj.frets;
+  if (!Array.isArray(frets) || frets.length === 0) return false;
+  const fretsStr = frets.map(f => f === null || f === undefined ? 'x' : String(f)).join('').toLowerCase();
+  const normalizedPrefix = prefixStr.toLowerCase();
+  return fretsStr.startsWith(normalizedPrefix);
+}

@@ -1,7 +1,15 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { findChord, isCommonChord } from '../utils/chord-library';
 import { useAllDatabaseChords } from '../db/queries';
-import { extractUsedChords, filterChords } from '../utils/chord-autocomplete-helpers';
+import {
+  extractUsedChords,
+  filterChords,
+  getStringCountForInstrument,
+  isFretPatternQuery,
+  isFretPatternOrPrefixQuery,
+  chordFretsMatchPattern,
+  chordFretsMatchPrefix,
+} from '../utils/chord-autocomplete-helpers';
 
 /**
  * Shared hook for chord autocomplete functionality
@@ -23,6 +31,8 @@ export function useChordAutocomplete({
   // Get database chords (main + personal) if userId provided
   const { data: dbChordsData } = useAllDatabaseChords(userId, instrument, tuning);
   const dbChords = dbChordsData?.chords || [];
+
+  const stringCount = getStringCountForInstrument(instrument, tuning);
   
   // Create a map of personal chord names for quick lookup
   const personalChordNames = useMemo(() => {
@@ -129,9 +139,11 @@ export function useChordAutocomplete({
     return filterChords(commonChordNames.filter(c => !usedSet.has(c)), query);
   }, [usedChordNames, commonChordNames, query]);
   
-  // Expand filtered names into chord entries (only the specific position used)
+  // Expand filtered names into chord entries (only the specific position used).
+  // When query is a fret pattern or prefix (e.g. "0", "00", "000", "0003"), expand all used chords then filter by frets.
   const usedFiltered = useMemo(() => {
-    return usedFilteredNames.map(chordText => {
+    const namesToExpand = isFretPatternOrPrefixQuery(query, stringCount) ? usedChordNames : usedFilteredNames;
+    const expanded = namesToExpand.map(chordText => {
       // Parse chord format: "C:2:abc123" or "C::abc123" or "C:2" or "C"
       // Note: extractUsedChords should have already stripped IDs, but handle defensively
       let actualChordName = chordText;
@@ -171,9 +183,28 @@ export function useChordAutocomplete({
       // Last resort: return a placeholder
       return { name: actualChordName, frets: null, position: chordPosition };
     });
-  }, [usedFilteredNames, getVariationsForName, instrument, tuning, dbChords]);
+    if (isFretPatternOrPrefixQuery(query, stringCount)) {
+      const matchFrets = query.length === stringCount
+        ? (c) => chordFretsMatchPattern(c, query)
+        : (c) => chordFretsMatchPrefix(c, query);
+      return expanded.filter(matchFrets);
+    }
+    return expanded;
+  }, [query, stringCount, usedChordNames, usedFilteredNames, getVariationsForName, instrument, tuning, dbChords]);
 
   const libraryFiltered = useMemo(() => {
+    if (isFretPatternOrPrefixQuery(query, stringCount)) {
+      const usedSet = new Set(usedChordNames);
+      const libraryVariations = allChordVariations.filter(
+        c => isCommonChord(c) && !usedSet.has(c.position > 1 ? `${c.name}:${c.position}` : c.name)
+      );
+      const matchFrets = query.length === stringCount
+        ? (c) => chordFretsMatchPattern(c, query)
+        : (c) => chordFretsMatchPrefix(c, query);
+      return libraryVariations
+        .filter(matchFrets)
+        .map(v => ({ ...v, position: v.position || 1 }));
+    }
     return libraryFilteredNames.flatMap(chordName => {
       const variations = getVariationsForName(chordName);
       // Filter to only include common chords (position 1, main library, specific suffixes)
@@ -191,7 +222,7 @@ export function useChordAutocomplete({
       }
       return [];
     });
-  }, [libraryFilteredNames, getVariationsForName, instrument, tuning, dbChords]);
+  }, [query, stringCount, usedChordNames, libraryFilteredNames, allChordVariations, getVariationsForName, instrument, tuning, dbChords]);
 
   // Reset selected index when filtered chords or elements change
   useEffect(() => {
