@@ -71,10 +71,6 @@ export default function ChordAutocomplete({
       // "Create custom chord" is selected
       setShowCustomChordModal(true);
       setShowDropdown(false);
-    } else if (selectedIndex < filteredElements.length) {
-      // Element selected
-      const element = filteredElements[selectedIndex];
-      insertElement(element.type);
     } else {
       // Chord selected
       const chordIndex = selectedIndex - filteredElements.length;

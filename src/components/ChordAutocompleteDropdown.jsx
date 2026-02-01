@@ -60,37 +60,6 @@ export default function ChordAutocompleteDropdown({
           </div>
         ) : (
           <>
-            {filteredElements.length > 0 && (
-              <>
-                <div className={`px-4 py-2 text-xs font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 ${query ? '' : 'sticky top-0'}`}>
-                  Elements
-                </div>
-                {filteredElements.map((element, index) => {
-                  const isSelected = index === selectedIndex;
-                  return (
-                    <button
-                      key={`element-${element.type}-${index}`}
-                      type="button"
-                      data-selected={isSelected}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onSelectElement(element.type);
-                      }}
-                      className={`w-full text-left px-3 py-1 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
-                        isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
-                      }`}
-                    >
-                      <span className="text-lg">{element.icon}</span>
-                      <span className="font-medium">{element.label}</span>
-                    </button>
-                  );
-                })}
-                {(usedFiltered.length > 0 || libraryFiltered.length > 0) && (
-                  <div className="border-t border-gray-200"></div>
-                )}
-              </>
-            )}
             {usedFiltered.length > 0 && (
               <>
                 <div className={`px-4 py-2 text-xs font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 ${query ? '' : 'sticky top-0'}`}>
@@ -151,7 +120,7 @@ export default function ChordAutocompleteDropdown({
             
             {libraryFiltered.length > 0 && (
               <>
-                {(filteredElements.length > 0 || usedFiltered.length > 0) && (
+                {usedFiltered.length > 0 && (
                   <div className="border-t border-gray-200"></div>
                 )}
                 <div className={`px-4 py-2 text-xs font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 ${query ? '' : 'sticky top-0'}`}>

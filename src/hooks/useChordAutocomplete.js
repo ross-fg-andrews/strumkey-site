@@ -105,11 +105,8 @@ export function useChordAutocomplete({
     };
   }, [allChordVariations]);
 
-  // Elements (headings and instructions) - always available
-  const elements = [
-    { type: 'heading', label: 'Heading', icon: '📝' },
-    { type: 'instruction', label: 'Instruction', icon: '💡' },
-  ];
+  // Elements (headings and instructions) - now only via edit banner Section button
+  const elements = [];
 
   // Filter elements based on query
   const filteredElements = useMemo(() => {
