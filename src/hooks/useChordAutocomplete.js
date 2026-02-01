@@ -11,6 +11,9 @@ import {
   chordFretsMatchPrefix,
 } from '../utils/chord-autocomplete-helpers';
 
+/** Suffix popularity order for Group 2 "All chords" sort (most common first). Unlisted suffixes appear after, alphabetically. */
+const SUFFIX_POPULARITY_ORDER = ['maj7', 'm7', 'sus4', 'sus2', 'add9', 'aug', '6', 'dim', '9'];
+
 /**
  * Shared hook for chord autocomplete functionality
  * Handles all state management, chord data processing, and filtering logic
@@ -219,7 +222,7 @@ export function useChordAutocomplete({
   }, [query, stringCount, usedChordNames, libraryFilteredNames, allChordVariations, getVariationsForName]);
 
   // Split into common chords and "all other" for display; combined list has no duplicates.
-  // Sort "All chords": Group 1 = alternate positions of major/7/minor (by type then position), Group 2 = rest (by name then position).
+  // Sort "All chords": Group 1 = alternate positions of major/7/minor (by type then position), Group 2 = rest (by suffix popularity then position).
   const { libraryFilteredCommon, libraryFilteredAllForDisplay, libraryFiltered } = useMemo(() => {
     const common = libraryFilteredAll.filter(isCommonChord);
     const allForDisplay = common.length > 0
@@ -229,6 +232,14 @@ export function useChordAutocomplete({
     const pos = (c) => {
       const p = Number(c.position);
       return Number.isInteger(p) && p >= 1 ? p : 1;
+    };
+
+    const getSuffixForSort = (chord) => {
+      const fromSuffix = (chord.suffix || '').trim().toLowerCase();
+      if (fromSuffix) return fromSuffix;
+      const name = chord.name || '';
+      const match = name.match(/^[A-Ga-g][#b]?(.*)$/i);
+      return (match ? (match[1] || '') : '').trim().toLowerCase();
     };
 
     const group1 = allForDisplay.filter(c => isCommonChordType(c) && pos(c) >= 2);
@@ -255,9 +266,17 @@ export function useChordAutocomplete({
       if (typeA !== typeB) return typeA - typeB;
       return pos(a) - pos(b);
     });
+    const RANK_OTHER = 9;
     const group2Sorted = [...group2].sort((a, b) => {
-      const nameCmp = (a.name || '').localeCompare(b.name || '');
-      if (nameCmp !== 0) return nameCmp;
+      const sufA = getSuffixForSort(a);
+      const sufB = getSuffixForSort(b);
+      const rankA = SUFFIX_POPULARITY_ORDER.indexOf(sufA) >= 0 ? SUFFIX_POPULARITY_ORDER.indexOf(sufA) : RANK_OTHER;
+      const rankB = SUFFIX_POPULARITY_ORDER.indexOf(sufB) >= 0 ? SUFFIX_POPULARITY_ORDER.indexOf(sufB) : RANK_OTHER;
+      if (rankA !== rankB) return rankA - rankB;
+      if (rankA === RANK_OTHER) {
+        const sufCmp = sufA.localeCompare(sufB);
+        if (sufCmp !== 0) return sufCmp;
+      }
       return pos(a) - pos(b);
     });
 
