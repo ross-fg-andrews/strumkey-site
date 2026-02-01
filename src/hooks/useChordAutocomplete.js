@@ -1,7 +1,18 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { findChord, isCommonChord } from '../utils/chord-library';
+import { findChord, isCommonChord, isCommonChordType } from '../utils/chord-library';
 import { useAllDatabaseChords } from '../db/queries';
-import { extractUsedChords, filterChords } from '../utils/chord-autocomplete-helpers';
+import {
+  extractUsedChords,
+  filterChords,
+  getStringCountForInstrument,
+  isFretPatternQuery,
+  isFretPatternOrPrefixQuery,
+  chordFretsMatchPattern,
+  chordFretsMatchPrefix,
+} from '../utils/chord-autocomplete-helpers';
+
+/** Suffix popularity order for Group 2 "All chords" sort (most common first). Unlisted suffixes appear after, alphabetically. */
+const SUFFIX_POPULARITY_ORDER = ['maj7', 'm7', 'sus4', 'sus2', 'add9', 'aug', '6', 'dim', '9'];
 
 /**
  * Shared hook for chord autocomplete functionality
@@ -17,12 +28,13 @@ export function useChordAutocomplete({
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showCustomChordModal, setShowCustomChordModal] = useState(false);
-  const [showVariationsModal, setShowVariationsModal] = useState(false);
   const [selectedPositions, setSelectedPositions] = useState(new Map());
 
   // Get database chords (main + personal) if userId provided
   const { data: dbChordsData } = useAllDatabaseChords(userId, instrument, tuning);
   const dbChords = dbChordsData?.chords || [];
+
+  const stringCount = getStringCountForInstrument(instrument, tuning);
   
   // Create a map of personal chord names for quick lookup
   const personalChordNames = useMemo(() => {
@@ -105,11 +117,8 @@ export function useChordAutocomplete({
     };
   }, [allChordVariations]);
 
-  // Elements (headings and instructions) - always available
-  const elements = [
-    { type: 'heading', label: 'Heading', icon: '📝' },
-    { type: 'instruction', label: 'Instruction', icon: '💡' },
-  ];
+  // Elements (headings and instructions) - now only via edit banner Section button
+  const elements = [];
 
   // Filter elements based on query
   const filteredElements = useMemo(() => {
@@ -126,15 +135,16 @@ export function useChordAutocomplete({
     return filterChords(usedChordNames, query);
   }, [usedChordNames, query]);
 
+  // Library names: all matching chord names (include names used in song so alternate positions can appear)
   const libraryFilteredNames = useMemo(() => {
-    const usedSet = new Set(usedChordNames);
-    // Filter to only show common chords in the dropdown (main library only)
-    return filterChords(commonChordNames.filter(c => !usedSet.has(c)), query);
-  }, [usedChordNames, commonChordNames, query]);
+    return filterChords(availableChordNames, query);
+  }, [availableChordNames, query]);
   
-  // Expand filtered names into chord entries (only the specific position used)
+  // Expand filtered names into chord entries (only the specific position used).
+  // When query is a fret pattern or prefix (e.g. "0", "00", "000", "0003"), expand all used chords then filter by frets.
   const usedFiltered = useMemo(() => {
-    return usedFilteredNames.map(chordText => {
+    const namesToExpand = isFretPatternOrPrefixQuery(query, stringCount) ? usedChordNames : usedFilteredNames;
+    const expanded = namesToExpand.map(chordText => {
       // Parse chord format: "C:2:abc123" or "C::abc123" or "C:2" or "C"
       // Note: extractUsedChords should have already stripped IDs, but handle defensively
       let actualChordName = chordText;
@@ -174,27 +184,110 @@ export function useChordAutocomplete({
       // Last resort: return a placeholder
       return { name: actualChordName, frets: null, position: chordPosition };
     });
-  }, [usedFilteredNames, getVariationsForName, instrument, tuning, dbChords]);
+    if (isFretPatternOrPrefixQuery(query, stringCount)) {
+      const matchFrets = query.length === stringCount
+        ? (c) => chordFretsMatchPattern(c, query)
+        : (c) => chordFretsMatchPrefix(c, query);
+      return expanded.filter(matchFrets);
+    }
+    return expanded;
+  }, [query, stringCount, usedChordNames, usedFilteredNames, getVariationsForName, instrument, tuning, dbChords]);
 
-  const libraryFiltered = useMemo(() => {
+  // All matching library chords (name or fret search) — include all chords, not just common
+  const libraryFilteredAll = useMemo(() => {
+    if (isFretPatternOrPrefixQuery(query, stringCount)) {
+      const usedSet = new Set(usedChordNames);
+      const libraryVariations = allChordVariations.filter(
+        c => !usedSet.has(c.position > 1 ? `${c.name}:${c.position}` : c.name)
+      );
+      const matchFrets = query.length === stringCount
+        ? (c) => chordFretsMatchPattern(c, query)
+        : (c) => chordFretsMatchPrefix(c, query);
+      return libraryVariations
+        .filter(matchFrets)
+        .map(v => ({ ...v, position: v.position || 1 }));
+    }
+    // Name search: expand all matching names to all variations, then exclude only the exact voicings used in the song
+    const usedSet = new Set(usedChordNames);
     return libraryFilteredNames.flatMap(chordName => {
       const variations = getVariationsForName(chordName);
-      // Filter to only include common chords (position 1, main library, specific suffixes)
-      const commonVariations = variations.filter(isCommonChord);
-      if (commonVariations.length > 0) {
-        // Ensure all variations have position property
-        return commonVariations.map(v => ({ ...v, position: v.position || 1 }));
-      }
-      // Fallback: try to get chord data using findChord (will only return position 1 if it's common)
-      const fallbackChord = findChord(chordName, instrument, tuning, 1, {
-        databaseChords: dbChords,
-      });
-      if (fallbackChord && isCommonChord(fallbackChord)) {
-        return [{ ...fallbackChord, source: fallbackChord.libraryType === 'personal' ? 'personal' : 'main', position: fallbackChord.position || 1 }];
-      }
-      return [];
+      return variations
+        .map(v => ({ ...v, position: v.position || 1 }))
+        .filter(v => {
+          const pos = v.position ?? 1;
+          const key = pos > 1 ? `${v.name}:${v.position}` : v.name;
+          return !usedSet.has(key);
+        });
     });
-  }, [libraryFilteredNames, getVariationsForName, instrument, tuning, dbChords]);
+  }, [query, stringCount, usedChordNames, libraryFilteredNames, allChordVariations, getVariationsForName]);
+
+  // Split into common chords and "all other" for display; combined list has no duplicates.
+  // Sort "All chords": Group 1 = alternate positions of major/7/minor (by type then position), Group 2 = rest (by suffix popularity then position).
+  const { libraryFilteredCommon, libraryFilteredAllForDisplay, libraryFiltered } = useMemo(() => {
+    const common = libraryFilteredAll.filter(isCommonChord);
+    const allForDisplay = common.length > 0
+      ? libraryFilteredAll.filter(c => !isCommonChord(c))
+      : libraryFilteredAll;
+
+    const pos = (c) => {
+      const p = Number(c.position);
+      return Number.isInteger(p) && p >= 1 ? p : 1;
+    };
+
+    const getSuffixForSort = (chord) => {
+      const fromSuffix = (chord.suffix || '').trim().toLowerCase();
+      if (fromSuffix) return fromSuffix;
+      const name = chord.name || '';
+      const match = name.match(/^[A-Ga-g][#b]?(.*)$/i);
+      return (match ? (match[1] || '') : '').trim().toLowerCase();
+    };
+
+    const group1 = allForDisplay.filter(c => isCommonChordType(c) && pos(c) >= 2);
+    const group2 = allForDisplay.filter(c => !(isCommonChordType(c) && pos(c) >= 2));
+
+    const commonTypeOrder = (suffix, name) => {
+      const s = (suffix || '').trim().toLowerCase();
+      if (s === '' || s === 'major') return 0;
+      if (s === '7') return 1;
+      if (s === 'm' || s === 'minor') return 2;
+      if (name) {
+        const match = name.match(/^[A-Ga-g][#b]?(.*)$/i);
+        const nameSuffix = match ? (match[1] || '') : '';
+        const n = nameSuffix.trim().toLowerCase();
+        if (!n) return 0;
+        if (n === '7' || /^7(\s|$)/.test(n)) return 1;
+        if (n === 'm' || n === 'min' || n === 'minor' || /^m(\s|$)/.test(n) || /^min(\s|$)/.test(n) || /^minor(\s|$)/.test(n)) return 2;
+      }
+      return 0;
+    };
+    const group1Sorted = [...group1].sort((a, b) => {
+      const typeA = commonTypeOrder(a.suffix, a.name);
+      const typeB = commonTypeOrder(b.suffix, b.name);
+      if (typeA !== typeB) return typeA - typeB;
+      return pos(a) - pos(b);
+    });
+    const RANK_OTHER = 9;
+    const group2Sorted = [...group2].sort((a, b) => {
+      const sufA = getSuffixForSort(a);
+      const sufB = getSuffixForSort(b);
+      const rankA = SUFFIX_POPULARITY_ORDER.indexOf(sufA) >= 0 ? SUFFIX_POPULARITY_ORDER.indexOf(sufA) : RANK_OTHER;
+      const rankB = SUFFIX_POPULARITY_ORDER.indexOf(sufB) >= 0 ? SUFFIX_POPULARITY_ORDER.indexOf(sufB) : RANK_OTHER;
+      if (rankA !== rankB) return rankA - rankB;
+      if (rankA === RANK_OTHER) {
+        const sufCmp = sufA.localeCompare(sufB);
+        if (sufCmp !== 0) return sufCmp;
+      }
+      return pos(a) - pos(b);
+    });
+
+    const sortedAllForDisplay = [...group1Sorted, ...group2Sorted];
+
+    return {
+      libraryFilteredCommon: common,
+      libraryFilteredAllForDisplay: sortedAllForDisplay,
+      libraryFiltered: [...common, ...sortedAllForDisplay],
+    };
+  }, [libraryFilteredAll]);
 
   // Reset selected index when filtered chords or elements change
   useEffect(() => {
@@ -222,8 +315,6 @@ export function useChordAutocomplete({
     setSelectedIndex,
     showCustomChordModal,
     setShowCustomChordModal,
-    showVariationsModal,
-    setShowVariationsModal,
     selectedPositions,
     setSelectedPositions,
     
@@ -239,7 +330,9 @@ export function useChordAutocomplete({
     filteredElements,
     usedFiltered,
     libraryFiltered,
-    
+    libraryFilteredCommon,
+    libraryFilteredAllForDisplay,
+
     // Handlers
     handleChordPositionSelect,
   };

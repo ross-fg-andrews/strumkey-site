@@ -4,6 +4,17 @@ import ChordDiagram from './ChordDiagram';
 import { normalizeQuery } from '../utils/chord-autocomplete-helpers';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
 
+const chordLabelClass = 'inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium';
+
+function formatFretsForDisplay(frets) {
+  if (!Array.isArray(frets) || frets.length === 0) return '—';
+  return frets.map(f => f === null ? 'x' : String(f)).join('');
+}
+
+function formatPosition(position) {
+  return `Position ${String(position || 1).padStart(2, '0')}`;
+}
+
 /**
  * Modal component for chord insertion
  * Converts the dropdown interface to a modal dialog for better mobile/tablet usability
@@ -17,12 +28,13 @@ export default function ChordInsertionModal({
   filteredElements,
   usedFiltered,
   libraryFiltered,
+  libraryFilteredCommon = [],
+  libraryFilteredAllForDisplay = [],
   personalChordNames,
   instrument,
   tuning,
   onSelectElement,
   onSelectChord,
-  onShowVariations,
   onCreateCustom,
   onClose,
   onInsert,
@@ -47,7 +59,7 @@ export default function ChordInsertionModal({
     if (!isOpen) return;
     
     const handleKeyDown = (e) => {
-      const totalItems = filteredElements.length + usedFiltered.length + libraryFiltered.length + 2;
+      const totalItems = filteredElements.length + usedFiltered.length + libraryFiltered.length + 1;
       const isSearchInputFocused = document.activeElement === searchInputRef.current;
       
       if (e.key === 'ArrowDown') {
@@ -90,8 +102,7 @@ export default function ChordInsertionModal({
 
   if (!isOpen) return null;
 
-  const showMoreIndex = filteredElements.length + usedFiltered.length + libraryFiltered.length;
-  const createCustomIndex = showMoreIndex + 1;
+  const createCustomIndex = filteredElements.length + usedFiltered.length + libraryFiltered.length;
 
   // Handle search input keydown - the global handler takes care of navigation
   const handleSearchKeyDown = (e) => {
@@ -152,37 +163,6 @@ export default function ChordInsertionModal({
             </div>
           ) : (
             <>
-              {filteredElements.length > 0 && (
-                <>
-                  <div className="px-4 py-2 text-xs font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 sticky top-0">
-                    Elements
-                  </div>
-                  {filteredElements.map((element, index) => {
-                    const isSelected = index === selectedIndex;
-                    return (
-                      <button
-                        key={`element-${element.type}-${index}`}
-                        type="button"
-                        data-selected={isSelected}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          onSelectElement(element.type);
-                        }}
-                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
-                          isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
-                        }`}
-                      >
-                        <span className="text-lg">{element.icon}</span>
-                        <span className="font-medium">{element.label}</span>
-                      </button>
-                    );
-                  })}
-                  {(usedFiltered.length > 0 || libraryFiltered.length > 0) && (
-                    <div className="border-t border-gray-200"></div>
-                  )}
-                </>
-              )}
               {usedFiltered.length > 0 && (
                 <>
                   <div className="px-4 py-2 text-xs font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 sticky top-0">
@@ -205,35 +185,28 @@ export default function ChordInsertionModal({
                           e.stopPropagation();
                           onSelectChord(chordName, chordObj.position);
                         }}
-                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
-                          isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center justify-between gap-3 ${
+                          isSelected ? 'bg-primary-50' : ''
                         }`}
                       >
-                        {chordFrets && (
-                          <div className="flex-shrink-0 flex items-center">
-                            <ChordDiagram
-                              frets={chordFrets}
-                              baseFret={chordObj.baseFret}
-                              chordName=""
-                              instrument={instrument}
-                              tuning={tuning}
-                            />
-                          </div>
-                        )}
-                        <div className="flex-1 flex items-center gap-2 min-w-0">
-                          <span className="font-medium">{formatChordNameForDisplay(chordName)}</span>
-                          {chordObj.position > 1 && (
-                            <span className={`inline-flex items-center justify-center rounded-full text-white text-xs font-medium leading-[1em] min-w-[1em] px-1 ${
-                              isSelected ? 'bg-primary-700' : 'bg-gray-900'
-                            }`}>
-                              {chordObj.position}
-                            </span>
+                        <div className="flex items-center gap-0 min-w-0 flex-shrink">
+                          {chordFrets && (
+                            <div className="flex-shrink-0 flex items-center">
+                              <ChordDiagram
+                                frets={chordFrets}
+                                baseFret={chordObj.baseFret}
+                                chordName=""
+                                instrument={instrument}
+                                tuning={tuning}
+                              />
+                            </div>
                           )}
-                          {isPersonal && (
-                            <span className="text-xs text-yellow-600 flex-shrink-0" title="Personal library">
-                              ⭐
-                            </span>
-                          )}
+                          <span className={chordLabelClass}>{formatChordNameForDisplay(chordName)}</span>
+                        </div>
+                        <div className="flex flex-col items-end text-gray-600 text-sm font-normal flex-shrink-0">
+                          <span>{formatFretsForDisplay(chordFrets)}</span>
+                          <span className="text-gray-500">{formatPosition(chordObj.position)}</span>
+                          {isPersonal && <span className="text-xs">Personal</span>}
                         </div>
                       </button>
                     );
@@ -243,93 +216,115 @@ export default function ChordInsertionModal({
               
               {libraryFiltered.length > 0 && (
                 <>
-                  {(filteredElements.length > 0 || usedFiltered.length > 0) && (
+                  {usedFiltered.length > 0 && (
                     <div className="border-t border-gray-200"></div>
                   )}
-                  <div className="px-4 py-2 text-xs font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 sticky top-0">
-                    Available chords
-                  </div>
-                  {libraryFiltered.map((chordObj, index) => {
-                    const globalIndex = filteredElements.length + usedFiltered.length + index;
-                    const isSelected = globalIndex === selectedIndex;
-                    const chordName = chordObj.name || chordObj;
-                    const chordFrets = chordObj.frets;
-                    const isPersonal = chordObj.source === 'personal';
-                    
-                    return (
-                      <button
-                        key={`library-${chordName}-${chordFrets || 'no-frets'}-${index}-${chordObj.source || 'unknown'}`}
-                        type="button"
-                        data-selected={isSelected}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          onSelectChord(chordName, chordObj.position);
-                        }}
-                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
-                          isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
-                        }`}
-                      >
-                        {chordFrets && (
-                          <div className="flex-shrink-0 flex items-center">
-                            <ChordDiagram
-                              frets={chordFrets}
-                              baseFret={chordObj.baseFret}
-                              chordName=""
-                              instrument={instrument}
-                              tuning={tuning}
-                            />
-                          </div>
-                        )}
-                        <div className="flex-1 flex items-center gap-2 min-w-0">
-                          <span className="font-medium">{formatChordNameForDisplay(chordName)}</span>
-                          {chordObj.position > 1 && (
-                            <span className={`inline-flex items-center justify-center rounded-full text-white text-xs font-medium leading-[1em] min-w-[1em] px-1 ${
-                              isSelected ? 'bg-primary-700' : 'bg-gray-900'
-                            }`}>
-                              {chordObj.position}
-                            </span>
-                          )}
-                          {isPersonal && (
-                            <span className="text-xs text-yellow-600 flex-shrink-0" title="Personal library">
-                              ⭐
-                            </span>
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
+                  {libraryFilteredCommon.length > 0 && (
+                    <>
+                      <div className="px-4 py-2 text-xs font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 sticky top-0">
+                        Common chords
+                      </div>
+                      {libraryFilteredCommon.map((chordObj, index) => {
+                        const globalIndex = filteredElements.length + usedFiltered.length + index;
+                        const isSelected = globalIndex === selectedIndex;
+                        const chordName = chordObj.name || chordObj;
+                        const chordFrets = chordObj.frets;
+                        const isPersonal = chordObj.source === 'personal' || personalChordNames.has(chordName);
+                        return (
+                          <button
+                            key={`common-${chordName}-${chordFrets || 'no-frets'}-${index}-${chordObj.source || 'unknown'}`}
+                            type="button"
+                            data-selected={isSelected}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onSelectChord(chordName, chordObj.position);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center justify-between gap-3 ${
+                              isSelected ? 'bg-primary-50' : ''
+                            }`}
+                          >
+                            <div className="flex items-center gap-0 min-w-0 flex-shrink">
+                              {chordFrets && (
+                                <div className="flex-shrink-0 flex items-center">
+                                  <ChordDiagram
+                                    frets={chordFrets}
+                                    baseFret={chordObj.baseFret}
+                                    chordName=""
+                                    instrument={instrument}
+                                    tuning={tuning}
+                                  />
+                                </div>
+                              )}
+                              <span className={chordLabelClass}>{formatChordNameForDisplay(chordName)}</span>
+                            </div>
+                            <div className="flex flex-col items-end text-gray-600 text-sm font-normal flex-shrink-0">
+                              <span>{formatFretsForDisplay(chordFrets)}</span>
+                              <span className="text-gray-500">{formatPosition(chordObj.position)}</span>
+                              {isPersonal && <span className="text-xs">Personal</span>}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </>
+                  )}
+                  {libraryFilteredAllForDisplay.length > 0 && (
+                    <>
+                      <div className="px-4 py-2 text-xs font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 sticky top-0">
+                        All chords
+                      </div>
+                      {libraryFilteredAllForDisplay.map((chordObj, index) => {
+                        const globalIndex = filteredElements.length + usedFiltered.length + libraryFilteredCommon.length + index;
+                        const isSelected = globalIndex === selectedIndex;
+                        const chordName = chordObj.name || chordObj;
+                        const chordFrets = chordObj.frets;
+                        const isPersonal = chordObj.source === 'personal' || personalChordNames.has(chordName);
+                        return (
+                          <button
+                            key={`all-${chordName}-${chordFrets || 'no-frets'}-${index}-${chordObj.source || 'unknown'}`}
+                            type="button"
+                            data-selected={isSelected}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onSelectChord(chordName, chordObj.position);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center justify-between gap-3 ${
+                              isSelected ? 'bg-primary-50' : ''
+                            }`}
+                          >
+                            <div className="flex items-center gap-0 min-w-0 flex-shrink">
+                              {chordFrets && (
+                                <div className="flex-shrink-0 flex items-center">
+                                  <ChordDiagram
+                                    frets={chordFrets}
+                                    baseFret={chordObj.baseFret}
+                                    chordName=""
+                                    instrument={instrument}
+                                    tuning={tuning}
+                                  />
+                                </div>
+                              )}
+                              <span className={chordLabelClass}>{formatChordNameForDisplay(chordName)}</span>
+                            </div>
+                            <div className="flex flex-col items-end text-gray-600 text-sm font-normal flex-shrink-0">
+                              <span>{formatFretsForDisplay(chordFrets)}</span>
+                              <span className="text-gray-500">{formatPosition(chordObj.position)}</span>
+                              {isPersonal && <span className="text-xs">Personal</span>}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </>
+                  )}
                 </>
               )}
             </>
           )}
         </div>
         
-        {/* Show more variations and Create custom chord options */}
+        {/* Create custom chord option */}
         <div className="border-t border-gray-200 bg-white">
-          <button
-            type="button"
-            data-selected={selectedIndex === showMoreIndex}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onShowVariations();
-            }}
-            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors border-b border-gray-200"
-            style={{
-              backgroundColor: selectedIndex === showMoreIndex 
-                ? '#eff6ff' 
-                : 'transparent',
-              color: selectedIndex === showMoreIndex 
-                ? '#1e40af' 
-                : '#111827',
-              fontWeight: selectedIndex === showMoreIndex 
-                ? '500' 
-                : '400',
-            }}
-          >
-            Show more variations
-          </button>
           <button
             type="button"
             data-selected={selectedIndex === createCustomIndex}
