@@ -19,7 +19,6 @@ export default function ChordAutocompleteDropdown({
   tuning,
   onSelectElement,
   onSelectChord,
-  onShowVariations,
   onCreateCustom,
   dropdownRef,
 }) {
@@ -35,8 +34,7 @@ export default function ChordAutocompleteDropdown({
 
   if (!isOpen) return null;
 
-  const showMoreIndex = filteredElements.length + usedFiltered.length + libraryFiltered.length;
-  const createCustomIndex = showMoreIndex + 1;
+  const createCustomIndex = filteredElements.length + usedFiltered.length + libraryFiltered.length;
 
   return (
     <div
@@ -124,7 +122,7 @@ export default function ChordAutocompleteDropdown({
                   <div className="border-t border-gray-200"></div>
                 )}
                 <div className={`px-4 py-2 text-xs font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 ${query ? '' : 'sticky top-0'}`}>
-                  Available chords
+                  Common chords
                 </div>
                 {libraryFiltered.map((chordObj, index) => {
                   const globalIndex = filteredElements.length + usedFiltered.length + index;
@@ -182,31 +180,8 @@ export default function ChordAutocompleteDropdown({
         )}
       </div>
       
-      {/* Show more variations and Create custom chord options - ALWAYS show at bottom, sticky */}
+      {/* Create custom chord option - ALWAYS show at bottom, sticky */}
       <div className="border-t border-gray-200 bg-white sticky bottom-0">
-        <button
-          type="button"
-          data-selected={selectedIndex === showMoreIndex}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onShowVariations();
-          }}
-          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors border-b border-gray-200"
-          style={{
-            backgroundColor: selectedIndex === showMoreIndex 
-              ? '#eff6ff' 
-              : 'transparent',
-            color: selectedIndex === showMoreIndex 
-              ? '#1e40af' 
-              : '#111827',
-            fontWeight: selectedIndex === showMoreIndex 
-              ? '500' 
-              : '400',
-          }}
-        >
-          Show more variations
-        </button>
         <button
           type="button"
           data-selected={selectedIndex === createCustomIndex}

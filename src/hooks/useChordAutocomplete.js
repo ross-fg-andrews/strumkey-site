@@ -25,7 +25,6 @@ export function useChordAutocomplete({
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showCustomChordModal, setShowCustomChordModal] = useState(false);
-  const [showVariationsModal, setShowVariationsModal] = useState(false);
   const [selectedPositions, setSelectedPositions] = useState(new Map());
 
   // Get database chords (main + personal) if userId provided
@@ -133,11 +132,11 @@ export function useChordAutocomplete({
     return filterChords(usedChordNames, query);
   }, [usedChordNames, query]);
 
+  // Library names: all available chord names (not just common) so C6, Am7, etc. can be found
   const libraryFilteredNames = useMemo(() => {
     const usedSet = new Set(usedChordNames);
-    // Filter to only show common chords in the dropdown (main library only)
-    return filterChords(commonChordNames.filter(c => !usedSet.has(c)), query);
-  }, [usedChordNames, commonChordNames, query]);
+    return filterChords(availableChordNames.filter(c => !usedSet.has(c)), query);
+  }, [usedChordNames, availableChordNames, query]);
   
   // Expand filtered names into chord entries (only the specific position used).
   // When query is a fret pattern or prefix (e.g. "0", "00", "000", "0003"), expand all used chords then filter by frets.
@@ -192,11 +191,12 @@ export function useChordAutocomplete({
     return expanded;
   }, [query, stringCount, usedChordNames, usedFilteredNames, getVariationsForName, instrument, tuning, dbChords]);
 
-  const libraryFiltered = useMemo(() => {
+  // All matching library chords (name or fret search) — include all chords, not just common
+  const libraryFilteredAll = useMemo(() => {
     if (isFretPatternOrPrefixQuery(query, stringCount)) {
       const usedSet = new Set(usedChordNames);
       const libraryVariations = allChordVariations.filter(
-        c => isCommonChord(c) && !usedSet.has(c.position > 1 ? `${c.name}:${c.position}` : c.name)
+        c => !usedSet.has(c.position > 1 ? `${c.name}:${c.position}` : c.name)
       );
       const matchFrets = query.length === stringCount
         ? (c) => chordFretsMatchPattern(c, query)
@@ -205,24 +205,25 @@ export function useChordAutocomplete({
         .filter(matchFrets)
         .map(v => ({ ...v, position: v.position || 1 }));
     }
+    // Name search: expand all matching names to all variations (not just common)
     return libraryFilteredNames.flatMap(chordName => {
       const variations = getVariationsForName(chordName);
-      // Filter to only include common chords (position 1, main library, specific suffixes)
-      const commonVariations = variations.filter(isCommonChord);
-      if (commonVariations.length > 0) {
-        // Ensure all variations have position property
-        return commonVariations.map(v => ({ ...v, position: v.position || 1 }));
-      }
-      // Fallback: try to get chord data using findChord (will only return position 1 if it's common)
-      const fallbackChord = findChord(chordName, instrument, tuning, 1, {
-        databaseChords: dbChords,
-      });
-      if (fallbackChord && isCommonChord(fallbackChord)) {
-        return [{ ...fallbackChord, source: fallbackChord.libraryType === 'personal' ? 'personal' : 'main', position: fallbackChord.position || 1 }];
-      }
-      return [];
+      return variations.map(v => ({ ...v, position: v.position || 1 }));
     });
-  }, [query, stringCount, usedChordNames, libraryFilteredNames, allChordVariations, getVariationsForName, instrument, tuning, dbChords]);
+  }, [query, stringCount, usedChordNames, libraryFilteredNames, allChordVariations, getVariationsForName]);
+
+  // Split into common chords and "all other" for display; combined list has no duplicates
+  const { libraryFilteredCommon, libraryFilteredAllForDisplay, libraryFiltered } = useMemo(() => {
+    const common = libraryFilteredAll.filter(isCommonChord);
+    const allForDisplay = common.length > 0
+      ? libraryFilteredAll.filter(c => !isCommonChord(c))
+      : libraryFilteredAll;
+    return {
+      libraryFilteredCommon: common,
+      libraryFilteredAllForDisplay: allForDisplay,
+      libraryFiltered: [...common, ...allForDisplay],
+    };
+  }, [libraryFilteredAll]);
 
   // Reset selected index when filtered chords or elements change
   useEffect(() => {
@@ -250,8 +251,6 @@ export function useChordAutocomplete({
     setSelectedIndex,
     showCustomChordModal,
     setShowCustomChordModal,
-    showVariationsModal,
-    setShowVariationsModal,
     selectedPositions,
     setSelectedPositions,
     
@@ -267,7 +266,9 @@ export function useChordAutocomplete({
     filteredElements,
     usedFiltered,
     libraryFiltered,
-    
+    libraryFilteredCommon,
+    libraryFilteredAllForDisplay,
+
     // Handlers
     handleChordPositionSelect,
   };

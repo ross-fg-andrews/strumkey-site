@@ -3,7 +3,6 @@ import { findChord } from '../utils/chord-library';
 import { useChordAutocomplete } from '../hooks/useChordAutocomplete';
 import ChordInsertionModal from './ChordInsertionModal';
 import CustomChordModal from './CustomChordModal';
-import ChordVariationsModal from './ChordVariationsModal';
 import { createPersonalChord } from '../db/mutations';
 
 export default function ChordAutocomplete({ 
@@ -33,18 +32,17 @@ export default function ChordAutocomplete({
     setSelectedIndex,
     showCustomChordModal,
     setShowCustomChordModal,
-    showVariationsModal,
-    setShowVariationsModal,
     selectedPositions,
     setSelectedPositions,
     dbChords,
     personalChordNames,
-    allChordVariations,
     usedChordNames,
     getChordData,
     filteredElements,
     usedFiltered,
     libraryFiltered,
+    libraryFilteredCommon,
+    libraryFilteredAllForDisplay,
     handleChordPositionSelect,
   } = useChordAutocomplete({ value, instrument, tuning, userId });
 
@@ -60,14 +58,9 @@ export default function ChordAutocomplete({
 
   // Handle insert action from modal
   const handleModalInsert = () => {
-    const showMoreIndex = filteredElements.length + usedFiltered.length + libraryFiltered.length;
-    const createCustomIndex = showMoreIndex + 1;
+    const createCustomIndex = filteredElements.length + usedFiltered.length + libraryFiltered.length;
     
-    // Check if "Show more variations" is selected
-    if (selectedIndex === showMoreIndex) {
-      setShowVariationsModal(true);
-      setShowDropdown(false);
-    } else if (selectedIndex === createCustomIndex) {
+    if (selectedIndex === createCustomIndex) {
       // "Create custom chord" is selected
       setShowCustomChordModal(true);
       setShowDropdown(false);
@@ -359,15 +352,13 @@ export default function ChordAutocomplete({
         filteredElements={filteredElements}
         usedFiltered={usedFiltered}
         libraryFiltered={libraryFiltered}
+        libraryFilteredCommon={libraryFilteredCommon}
+        libraryFilteredAllForDisplay={libraryFilteredAllForDisplay}
         personalChordNames={personalChordNames}
         instrument={instrument}
         tuning={tuning}
         onSelectElement={insertElement}
         onSelectChord={handleChordClick}
-        onShowVariations={() => {
-          setShowVariationsModal(true);
-          setShowDropdown(false);
-        }}
         onCreateCustom={() => {
           setShowCustomChordModal(true);
           setShowDropdown(false);
@@ -387,21 +378,6 @@ export default function ChordAutocomplete({
         tuning={tuning}
         userId={userId}
         databaseChords={dbChords}
-      />
-      
-      {/* Chord Variations Modal */}
-      <ChordVariationsModal
-        isOpen={showVariationsModal}
-        onClose={() => setShowVariationsModal(false)}
-        onSelectChord={(chordName, chordPosition, chordId) => {
-          handleChordClick(chordName, chordPosition, chordId);
-        }}
-        chords={allChordVariations}
-        initialQuery={query}
-        instrument={instrument}
-        tuning={tuning}
-        usedChordNames={usedChordNames}
-        personalChordNames={personalChordNames}
       />
     </div>
   );
