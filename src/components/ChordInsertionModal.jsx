@@ -1,10 +1,13 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useFixedStyleWithIOsKeyboard } from 'react-ios-keyboard-viewport';
 import ChordDiagram from './ChordDiagram';
 import { normalizeQuery } from '../utils/chord-autocomplete-helpers';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
 
 const chordLabelClass = 'inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium';
+
+/** Max library chords to render until user clicks "Show more" (progressive rendering) */
+const LIBRARY_RENDER_CAP = 50;
 
 function formatFretsForDisplay(frets) {
   if (!Array.isArray(frets) || frets.length === 0) return '—';
@@ -41,8 +44,19 @@ export default function ChordInsertionModal({
   modalRef,
   searchInputRef,
 }) {
-  // Call hook at top level (before any early returns) - React Rules of Hooks
   const { fixedCenter } = useFixedStyleWithIOsKeyboard();
+  const [libraryExpanded, setLibraryExpanded] = useState(false);
+
+  const hasMoreLibrary = libraryFilteredAllForDisplay.length > LIBRARY_RENDER_CAP;
+  const displayedAllForDisplay = libraryExpanded
+    ? libraryFilteredAllForDisplay
+    : libraryFilteredAllForDisplay.slice(0, LIBRARY_RENDER_CAP);
+  const displayedLibraryCount =
+    filteredElements.length + usedFiltered.length + libraryFilteredCommon.length + displayedAllForDisplay.length;
+
+  useEffect(() => {
+    if (!isOpen) setLibraryExpanded(false);
+  }, [isOpen]);
 
   // Scroll selected item into view
   useEffect(() => {
@@ -54,12 +68,12 @@ export default function ChordInsertionModal({
     }
   }, [selectedIndex, isOpen, modalRef]);
 
-  // Handle keyboard navigation in modal
+  // Handle keyboard navigation in modal (uses displayed count when list is capped)
   useEffect(() => {
     if (!isOpen) return;
     
     const handleKeyDown = (e) => {
-      const totalItems = filteredElements.length + usedFiltered.length + libraryFiltered.length + 1;
+      const totalItems = displayedLibraryCount + 1;
       const isSearchInputFocused = document.activeElement === searchInputRef.current;
       
       if (e.key === 'ArrowDown') {
@@ -89,7 +103,7 @@ export default function ChordInsertionModal({
     
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, filteredElements.length, usedFiltered.length, libraryFiltered.length, setSelectedIndex, onInsert, onClose, searchInputRef]);
+  }, [isOpen, displayedLibraryCount, setSelectedIndex, onInsert, onClose, searchInputRef]);
 
   // Auto-focus search input when modal opens
   useEffect(() => {
@@ -102,7 +116,7 @@ export default function ChordInsertionModal({
 
   if (!isOpen) return null;
 
-  const createCustomIndex = filteredElements.length + usedFiltered.length + libraryFiltered.length;
+  const createCustomIndex = displayedLibraryCount;
 
   // Handle search input keydown - the global handler takes care of navigation
   const handleSearchKeyDown = (e) => {
@@ -127,7 +141,7 @@ export default function ChordInsertionModal({
     >
       <div 
         ref={modalRef}
-        className="bg-white rounded-lg shadow-xl max-h-[80vh] w-full max-w-md flex flex-col"
+        className="bg-white rounded-lg shadow-xl h-[80vh] w-full max-w-md flex flex-col"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -268,12 +282,12 @@ export default function ChordInsertionModal({
                       })}
                     </>
                   )}
-                  {libraryFilteredAllForDisplay.length > 0 && (
+                  {displayedAllForDisplay.length > 0 && (
                     <>
                       <div className="px-4 py-2 text-xs font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 sticky top-0">
                         All chords
                       </div>
-                      {libraryFilteredAllForDisplay.map((chordObj, index) => {
+                      {displayedAllForDisplay.map((chordObj, index) => {
                         const globalIndex = filteredElements.length + usedFiltered.length + libraryFilteredCommon.length + index;
                         const isSelected = globalIndex === selectedIndex;
                         const chordName = chordObj.name || chordObj;
@@ -316,6 +330,15 @@ export default function ChordInsertionModal({
                         );
                       })}
                     </>
+                  )}
+                  {hasMoreLibrary && (
+                    <button
+                      type="button"
+                      onClick={() => setLibraryExpanded(true)}
+                      className="w-full text-left px-4 py-2 text-sm text-primary-600 hover:bg-primary-50 font-medium"
+                    >
+                      Show more ({libraryFilteredAllForDisplay.length - LIBRARY_RENDER_CAP} more)
+                    </button>
                   )}
                 </>
               )}

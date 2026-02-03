@@ -1,8 +1,9 @@
-import { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
+import { useRef, useEffect, useState, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
 import { findChord } from '../utils/chord-library';
-import { useChordAutocomplete } from '../hooks/useChordAutocomplete';
+import { useChordAutocomplete, splitLibraryForDisplay } from '../hooks/useChordAutocomplete';
 import ChordInsertionModal from './ChordInsertionModal';
+import ChordSearchFullResults from './ChordSearchFullResults';
 import CustomChordModal from './CustomChordModal';
 import { createPersonalChord } from '../db/mutations';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
@@ -81,6 +82,20 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
     libraryFilteredAllForDisplay,
     handleChordPositionSelect,
   } = useChordAutocomplete({ value, instrument, tuning, userId });
+
+  const [fullSearchResults, setFullSearchResults] = useState(null);
+  useEffect(() => {
+    if (!showDropdown || !query?.trim()) setFullSearchResults(null);
+  }, [showDropdown, query]);
+
+  const effectiveLibrary = useMemo(() => {
+    if (fullSearchResults != null) return splitLibraryForDisplay(fullSearchResults);
+    return {
+      libraryFiltered,
+      libraryFilteredCommon,
+      libraryFilteredAllForDisplay,
+    };
+  }, [fullSearchResults, libraryFiltered, libraryFilteredCommon, libraryFilteredAllForDisplay]);
 
   // Expose openChordModal, captureCursorPosition, insertSection for parent (e.g. edit banner)
   useImperativeHandle(ref, () => ({
@@ -1468,6 +1483,17 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
         }
       `}</style>
       
+      {/* Full-library search: only mounts when modal open and user has typed (deferred load) */}
+      {showDropdown && query?.trim() && (
+        <ChordSearchFullResults
+          query={query}
+          userId={userId}
+          instrument={instrument}
+          tuning={tuning}
+          usedChordNames={usedChordNames}
+          onResults={setFullSearchResults}
+        />
+      )}
       {/* Chord Insertion Modal - portaled to body so it works correctly inside scroll containers */}
       {showDropdown && createPortal(
         <ChordInsertionModal
@@ -1478,9 +1504,9 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
           setSelectedIndex={setSelectedIndex}
           filteredElements={filteredElements}
           usedFiltered={usedFiltered}
-          libraryFiltered={libraryFiltered}
-          libraryFilteredCommon={libraryFilteredCommon}
-          libraryFilteredAllForDisplay={libraryFilteredAllForDisplay}
+          libraryFiltered={effectiveLibrary.libraryFiltered}
+          libraryFilteredCommon={effectiveLibrary.libraryFilteredCommon}
+          libraryFilteredAllForDisplay={effectiveLibrary.libraryFilteredAllForDisplay}
           personalChordNames={personalChordNames}
           instrument={instrument}
           tuning={tuning}

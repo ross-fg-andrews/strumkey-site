@@ -371,22 +371,36 @@ export function useMeeting(meetingId) {
   });
 }
 
-// Search chords
-export function useChordSearch(query) {
-  if (!query || query.length < 1) {
-    return { data: { chords: [] } };
-  }
+// Search chords by name (optional limit and instrument/tuning filter)
+// Must always call db.useQuery (rules of hooks); use impossible condition when query is empty.
+export function useChordSearch(query, options = {}) {
+  const { limit = 20, instrument, tuning } = options;
+  const hasQuery = query && query.trim().length > 0;
 
-  return db.useQuery({
+  const tuningFilter = tuning === 'ukulele_standard'
+    ? { $in: ['ukulele_standard', 'standard'] }
+    : tuning;
+
+  const where = hasQuery
+    ? { name: { $like: `%${query.trim()}%` } }
+    : { name: '' };
+  if (instrument != null) where.instrument = instrument;
+  if (tuning != null) where.tuning = tuningFilter;
+
+  const result = db.useQuery({
     chords: {
       $: {
-        where: {
-          name: { $like: `%${query}%` },
-        },
-        limit: 20,
+        where,
+        limit: Math.min(Math.max(limit, 1), 100),
+        order: { name: 'asc' },
       },
     },
   });
+
+  if (!hasQuery) {
+    return { data: { chords: [] }, error: result.error };
+  }
+  return result;
 }
 
 // Get all chords (for autocomplete)
@@ -467,6 +481,62 @@ export function useMainLibraryChords(instrument = 'ukulele', tuning = 'ukulele_s
       },
     },
   });
+
+  return { data, error };
+}
+
+// Get common chords only (position 1, main library, major/minor/7) for fast modal initial load
+export function useCommonChords(instrument = 'ukulele', tuning = 'ukulele_standard') {
+  const tuningFilter = tuning === 'ukulele_standard'
+    ? { $in: ['ukulele_standard', 'standard'] }
+    : tuning;
+
+  const { data, error } = db.useQuery({
+    chords: {
+      $: {
+        where: {
+          libraryType: 'main',
+          instrument,
+          tuning: tuningFilter,
+          position: 1,
+          suffix: { $in: ['', 'major', 'm', 'minor', '7'] },
+        },
+        order: { name: 'asc' },
+      },
+    },
+  });
+
+  return { data, error };
+}
+
+// Get chords by name list (for "used in song" expansion without loading full library)
+export function useChordsByNames(names, instrument = 'ukulele', tuning = 'ukulele_standard') {
+  const tuningFilter = tuning === 'ukulele_standard'
+    ? { $in: ['ukulele_standard', 'standard'] }
+    : tuning;
+
+  const cappedNames = Array.isArray(names) ? names.slice(0, 100) : [];
+  const hasNames = cappedNames.length > 0;
+
+  const { data, error } = db.useQuery({
+    chords: {
+      $: {
+        where: hasNames
+          ? {
+              name: { $in: cappedNames },
+              instrument,
+              tuning: tuningFilter,
+            }
+          : { name: '' },
+        order: { name: 'asc' },
+        limit: 200,
+      },
+    },
+  });
+
+  if (!hasNames) {
+    return { data: { chords: [] }, error: null };
+  }
 
   return { data, error };
 }
