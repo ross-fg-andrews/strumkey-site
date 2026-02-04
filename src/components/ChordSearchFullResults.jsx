@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useAllDatabaseChords } from '../db/queries';
 import { chordMatchesQuery } from '../utils/chord-autocomplete-helpers';
 
@@ -18,7 +18,21 @@ export default function ChordSearchFullResults({
   const { data } = useAllDatabaseChords(userId, instrument, tuning);
   const onResultsRef = useRef(onResults);
   onResultsRef.current = onResults;
-  const allChords = data?.chords || [];
+  const usedChordNamesRef = useRef(usedChordNames);
+  usedChordNamesRef.current = usedChordNames;
+  const allChords = useMemo(() => data?.chords ?? [], [data?.chords]);
+  const allChordsKey = useMemo(
+    () =>
+      (data?.chords ?? [])
+        .map((c) => c.id ?? c.name ?? '')
+        .sort()
+        .join('\0'),
+    [data?.chords]
+  );
+  const usedKey = useMemo(
+    () => [...(usedChordNames || [])].sort().join('\0'),
+    [usedChordNames]
+  );
 
   const tuningMatch = (c) =>
     (c.tuning === 'ukulele_standard' || c.tuning === 'standard') &&
@@ -31,7 +45,7 @@ export default function ChordSearchFullResults({
       onResultsRef.current(null);
       return;
     }
-    const usedSet = new Set(usedChordNames || []);
+    const usedSet = new Set(usedChordNamesRef.current || []);
     const withSource = (arr, src) =>
       (arr || [])
         .filter((c) => c.instrument === instrument && tuningMatch(c))
@@ -53,7 +67,7 @@ export default function ChordSearchFullResults({
       return !usedSet.has(key);
     });
     onResultsRef.current(excludeUsed);
-  }, [query, usedChordNames, allChords, instrument, tuning]);
+  }, [query, allChordsKey, instrument, tuning, usedKey]);
 
   return null;
 }
