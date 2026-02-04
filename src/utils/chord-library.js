@@ -17,6 +17,7 @@
  * @param {Array} options.databaseChords - Array of database chord objects (main + personal)
  * @param {Array} options.embeddedChords - Array of embedded chord objects from song
  * @param {string|null} chordId - Optional chord ID for direct lookup (fastest, most reliable)
+ * @param {boolean} allowPositionFallback - If false, don't fall back to position 1 when requested position isn't found (default: true)
  * @returns {Object|null} Chord data object or null if not found
  */
 export function findChord(
@@ -25,7 +26,8 @@ export function findChord(
   tuning = 'ukulele_standard', 
   positionOrVariation = 1,
   options = {},
-  chordId = null
+  chordId = null,
+  allowPositionFallback = true
 ) {
   if (!chordName) return null;
   
@@ -64,7 +66,7 @@ export function findChord(
   
   // 2. Check personal library chords (user's custom chords take precedence)
   if (!chord && databaseChords.length > 0) {
-    // Try to find chord with matching position, prefer position 1 if not found
+    // Try to find chord with matching position
     chord = databaseChords.find(c => 
       c.name === chordName &&
       c.instrument === instrument &&
@@ -73,8 +75,8 @@ export function findChord(
       c.libraryType === 'personal'
     );
     
-    // If not found with specific position, fall back to position 1 (most common)
-    if (!chord && position !== 1) {
+    // If not found with specific position and fallback is allowed, fall back to position 1 (most common)
+    if (!chord && position !== 1 && allowPositionFallback) {
       chord = databaseChords.find(c => 
         c.name === chordName &&
         c.instrument === instrument &&
@@ -84,8 +86,8 @@ export function findChord(
       );
     }
     
-    // Case-insensitive fallback (any position)
-    if (!chord) {
+    // Case-insensitive fallback (any position) - only if fallback is allowed or we're looking for position 1
+    if (!chord && (allowPositionFallback || position === 1)) {
       chord = databaseChords.find(c => 
         c.name.toLowerCase() === chordName.toLowerCase() &&
         c.instrument === instrument &&
@@ -97,7 +99,7 @@ export function findChord(
   
   // 3. Check database chords (main library)
   if (!chord && databaseChords.length > 0) {
-    // Try to find chord with matching position, prefer position 1 if not found
+    // Try to find chord with matching position
     chord = databaseChords.find(c => 
       c.name === chordName &&
       c.instrument === instrument &&
@@ -106,8 +108,8 @@ export function findChord(
       c.libraryType === 'main'
     );
     
-    // If not found with specific position, fall back to position 1 (most common)
-    if (!chord && position !== 1) {
+    // If not found with specific position and fallback is allowed, fall back to position 1 (most common)
+    if (!chord && position !== 1 && allowPositionFallback) {
       chord = databaseChords.find(c => 
         c.name === chordName &&
         c.instrument === instrument &&
@@ -117,8 +119,8 @@ export function findChord(
       );
     }
     
-    // Case-insensitive fallback (any position)
-    if (!chord) {
+    // Case-insensitive fallback (any position) - only if fallback is allowed or we're looking for position 1
+    if (!chord && (allowPositionFallback || position === 1)) {
       chord = databaseChords.find(c => 
         c.name.toLowerCase() === chordName.toLowerCase() &&
         c.instrument === instrument &&

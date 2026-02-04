@@ -350,15 +350,16 @@ export default function SongSheet() {
       .map(({ name: chordName, position, chordId }) => {
         // Try ID lookup first if available, then fall back to name+position lookup
         // Order: embedded, database personal, database main
+        // Disable position fallback to ensure diagram matches the requested position
         const chordData = chordId
           ? findChord(chordName, instrument, tuning, position, {
               databaseChords: dbChords,
               embeddedChords: embeddedChords,
-            }, chordId)
+            }, chordId, false)
           : findChord(chordName, instrument, tuning, position, {
               databaseChords: dbChords,
               embeddedChords: embeddedChords,
-            });
+            }, null, false);
         
         if (chordData && chordData.frets) {
           return {
