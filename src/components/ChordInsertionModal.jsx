@@ -197,7 +197,7 @@ export default function ChordInsertionModal({
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          onSelectChord(chordName, chordObj.position);
+                          onSelectChord(chordName, chordObj.position, chordObj.id ?? null);
                         }}
                         className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center justify-between gap-3 ${
                           isSelected ? 'bg-primary-50' : ''
@@ -252,7 +252,7 @@ export default function ChordInsertionModal({
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              onSelectChord(chordName, chordObj.position);
+                              onSelectChord(chordName, chordObj.position, chordObj.id ?? null);
                             }}
                             className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center justify-between gap-3 ${
                               isSelected ? 'bg-primary-50' : ''
@@ -301,7 +301,7 @@ export default function ChordInsertionModal({
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              onSelectChord(chordName, chordObj.position);
+                              onSelectChord(chordName, chordObj.position, chordObj.id ?? null);
                             }}
                             className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center justify-between gap-3 ${
                               isSelected ? 'bg-primary-50' : ''
