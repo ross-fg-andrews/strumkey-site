@@ -78,7 +78,7 @@ export default function ChordAutocompleteDropdown({
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        onSelectChord(chordName, chordObj.position);
+                        onSelectChord(chordName, chordObj.position, chordObj.id ?? null);
                       }}
                       className={`w-full text-left px-3 py-1 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
                         isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''
@@ -139,7 +139,7 @@ export default function ChordAutocompleteDropdown({
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        onSelectChord(chordName, chordObj.position);
+                        onSelectChord(chordName, chordObj.position, chordObj.id ?? null);
                       }}
                       className={`w-full text-left px-3 py-1 text-sm hover:bg-gray-100 transition-colors flex items-center gap-3 ${
                         isSelected ? 'bg-primary-50 text-primary-700 font-medium' : ''

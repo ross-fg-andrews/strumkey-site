@@ -34,9 +34,14 @@ export function findChord(
   const { databaseChords = [], embeddedChords = [] } = options;
   
   // If chordId provided, use it directly (fastest, most reliable)
-  if (chordId && databaseChords.length > 0) {
-    const chord = databaseChords.find(c => c.id === chordId);
-    if (chord) return chord;
+  // Check embedded chords first (song-specific), then database
+  if (chordId) {
+    const fromEmbedded = embeddedChords.find(c => c.id === chordId);
+    if (fromEmbedded) return fromEmbedded;
+    if (databaseChords.length > 0) {
+      const chord = databaseChords.find(c => c.id === chordId);
+      if (chord) return chord;
+    }
   }
   
   // Convert legacy variation string to position number (backward compatibility)
@@ -49,19 +54,40 @@ export function findChord(
   }
   
   // 1. Check embedded chords first (highest priority - song-specific custom chords)
+  // Match position so the correct diagram is shown for each chord position (e.g. Dm7 1, 2, 3).
+  // Embedded chords without a position field are treated as position 1.
+  const positionMatches = (c) => (c.position == null || c.position === undefined) ? position === 1 : c.position === position;
   let chord = embeddedChords.find(c => 
     c.name === chordName &&
     c.instrument === instrument &&
-    c.tuning === tuning
+    c.tuning === tuning &&
+    positionMatches(c)
   );
   
-  // Case-insensitive fallback for embedded chords
+  // Case-insensitive fallback for embedded chords (still match position)
   if (!chord) {
     chord = embeddedChords.find(c => 
       c.name.toLowerCase() === chordName.toLowerCase() &&
       c.instrument === instrument &&
+      c.tuning === tuning &&
+      positionMatches(c)
+    );
+  }
+  
+  // If no exact position match in embedded and fallback allowed, use first matching chord by name
+  if (!chord && embeddedChords.length > 0 && allowPositionFallback) {
+    chord = embeddedChords.find(c => 
+      c.name === chordName &&
+      c.instrument === instrument &&
       c.tuning === tuning
     );
+    if (!chord) {
+      chord = embeddedChords.find(c => 
+        c.name.toLowerCase() === chordName.toLowerCase() &&
+        c.instrument === instrument &&
+        c.tuning === tuning
+      );
+    }
   }
   
   // 2. Check personal library chords (user's custom chords take precedence)

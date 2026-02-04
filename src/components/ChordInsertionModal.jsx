@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { useFixedStyleWithIOsKeyboard } from 'react-ios-keyboard-viewport';
 import ChordDiagram from './ChordDiagram';
-import { normalizeQuery } from '../utils/chord-autocomplete-helpers';
+import { normalizeQuery, relativeFretsToAbsolute } from '../utils/chord-autocomplete-helpers';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
 
 const chordLabelClass = 'inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium';
@@ -9,9 +9,10 @@ const chordLabelClass = 'inline-flex items-center gap-1.5 px-2 py-1 bg-primary-1
 /** Max library chords to render until user clicks "Show more" (progressive rendering) */
 const LIBRARY_RENDER_CAP = 50;
 
-function formatFretsForDisplay(frets) {
+function formatFretsForDisplay(frets, baseFret) {
   if (!Array.isArray(frets) || frets.length === 0) return '—';
-  return frets.map(f => f === null ? 'x' : String(f)).join('');
+  const toDisplay = baseFret != null && baseFret > 0 ? relativeFretsToAbsolute(frets, baseFret) : frets;
+  return toDisplay.map(f => (f === null || f === undefined || f === 'x' ? 'x' : String(f))).join('');
 }
 
 function formatPosition(position) {
@@ -197,7 +198,7 @@ export default function ChordInsertionModal({
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          onSelectChord(chordName, chordObj.position);
+                          onSelectChord(chordName, chordObj.position, chordObj.id ?? null);
                         }}
                         className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center justify-between gap-3 ${
                           isSelected ? 'bg-primary-50' : ''
@@ -218,7 +219,7 @@ export default function ChordInsertionModal({
                           <span className={chordLabelClass}>{formatChordNameForDisplay(chordName)}</span>
                         </div>
                         <div className="flex flex-col items-end text-gray-600 text-sm font-normal flex-shrink-0">
-                          <span>{formatFretsForDisplay(chordFrets)}</span>
+                          <span>{formatFretsForDisplay(chordFrets, chordObj.baseFret)}</span>
                           <span className="text-gray-500">{formatPosition(chordObj.position)}</span>
                           {isPersonal && <span className="text-xs">Personal</span>}
                         </div>
@@ -252,7 +253,7 @@ export default function ChordInsertionModal({
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              onSelectChord(chordName, chordObj.position);
+                              onSelectChord(chordName, chordObj.position, chordObj.id ?? null);
                             }}
                             className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center justify-between gap-3 ${
                               isSelected ? 'bg-primary-50' : ''
@@ -273,7 +274,7 @@ export default function ChordInsertionModal({
                               <span className={chordLabelClass}>{formatChordNameForDisplay(chordName)}</span>
                             </div>
                             <div className="flex flex-col items-end text-gray-600 text-sm font-normal flex-shrink-0">
-                              <span>{formatFretsForDisplay(chordFrets)}</span>
+                              <span>{formatFretsForDisplay(chordFrets, chordObj.baseFret)}</span>
                               <span className="text-gray-500">{formatPosition(chordObj.position)}</span>
                               {isPersonal && <span className="text-xs">Personal</span>}
                             </div>
@@ -301,7 +302,7 @@ export default function ChordInsertionModal({
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              onSelectChord(chordName, chordObj.position);
+                              onSelectChord(chordName, chordObj.position, chordObj.id ?? null);
                             }}
                             className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center justify-between gap-3 ${
                               isSelected ? 'bg-primary-50' : ''
@@ -322,7 +323,7 @@ export default function ChordInsertionModal({
                               <span className={chordLabelClass}>{formatChordNameForDisplay(chordName)}</span>
                             </div>
                             <div className="flex flex-col items-end text-gray-600 text-sm font-normal flex-shrink-0">
-                              <span>{formatFretsForDisplay(chordFrets)}</span>
+                              <span>{formatFretsForDisplay(chordFrets, chordObj.baseFret)}</span>
                               <span className="text-gray-500">{formatPosition(chordObj.position)}</span>
                               {isPersonal && <span className="text-xs">Personal</span>}
                             </div>
@@ -370,32 +371,6 @@ export default function ChordInsertionModal({
             }}
           >
             Create custom chord
-          </button>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="p-4 border-t border-gray-200 flex gap-3">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onClose();
-            }}
-            className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onInsert();
-            }}
-            className="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-          >
-            Insert
           </button>
         </div>
       </div>
