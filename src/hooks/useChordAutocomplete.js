@@ -125,11 +125,24 @@ export function useChordAutocomplete({
   const usedChordNames = useMemo(() => {
     return [...new Set(usedChords)].sort((a, b) => a.localeCompare(b));
   }, [usedChords]);
+  
+  // Extract base chord names (without position) for database query
+  // This ensures we load all positions for chords used in the song
+  const usedChordBaseNames = useMemo(() => {
+    const baseNames = new Set();
+    usedChordNames.forEach(chordText => {
+      // Parse to extract base name: "Dm7:2" -> "Dm7", "C" -> "C"
+      const positionMatch = chordText.match(/^(.+):(\d+)$/);
+      const baseName = positionMatch ? positionMatch[1] : chordText;
+      baseNames.add(baseName);
+    });
+    return Array.from(baseNames).sort((a, b) => a.localeCompare(b));
+  }, [usedChordNames]);
 
   // Load only common chords + personal + used-by-name + search (no full library)
   const { data: commonChordsData } = useCommonChords(instrument, tuning);
   const { data: personalChordsData } = usePersonalChords(userId, instrument, tuning);
-  const { data: chordsByNamesData } = useChordsByNames(usedChordNames, instrument, tuning);
+  const { data: chordsByNamesData } = useChordsByNames(usedChordBaseNames, instrument, tuning);
   const { data: searchChordsData } = useChordSearch(
     debouncedQuery && debouncedQuery.trim() ? normalizeQuery(debouncedQuery) : '',
     { limit: CHORD_SEARCH_LIMIT, instrument, tuning }
@@ -250,19 +263,29 @@ export function useChordAutocomplete({
       const variations = getVariationsForName(actualChordName);
       const matchingVariation = variations.find(v => v.position === chordPosition);
       
-      if (matchingVariation) {
+      if (matchingVariation && matchingVariation.frets) {
         return { ...matchingVariation, position: matchingVariation.position || 1 };
       }
       
-      // Fallback: try to get chord data using findChord with the specific position
+      // Fallback: try to get chord data using findChord with the specific position (without fallback to position 1)
+      // This ensures we get the exact position requested, not a fallback
       const fallbackChord = findChord(actualChordName, instrument, tuning, chordPosition, {
         databaseChords: currentChords,
-      });
-      if (fallbackChord) {
+      }, null, false);
+      if (fallbackChord && fallbackChord.frets) {
         return { ...fallbackChord, source: fallbackChord.libraryType === 'personal' ? 'personal' : 'main', position: fallbackChord.position || 1 };
       }
       
-      // Last resort: return a placeholder
+      // If exact position not found, try with fallback enabled (for backward compatibility)
+      // This handles cases where position data might be missing
+      const fallbackWithPosition1 = findChord(actualChordName, instrument, tuning, chordPosition, {
+        databaseChords: currentChords,
+      }, null, true);
+      if (fallbackWithPosition1 && fallbackWithPosition1.frets) {
+        return { ...fallbackWithPosition1, source: fallbackWithPosition1.libraryType === 'personal' ? 'personal' : 'main', position: fallbackWithPosition1.position || 1 };
+      }
+      
+      // Last resort: return a placeholder (only if no chord data exists at all)
       return { name: actualChordName, frets: null, position: chordPosition };
     });
     if (isFretPatternOrPrefixQuery(query, stringCount)) {
