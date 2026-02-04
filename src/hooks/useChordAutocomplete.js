@@ -4,6 +4,7 @@ import {
   useCommonChords,
   useChordsByNames,
   useChordSearch,
+  useMainLibraryChords,
   usePersonalChords,
 } from '../db/queries';
 import {
@@ -14,7 +15,6 @@ import {
   isFretPatternQuery,
   isFretPatternOrPrefixQuery,
   chordFretsMatchPattern,
-  chordFretsMatchPrefix,
   normalizeQuery,
 } from '../utils/chord-autocomplete-helpers';
 
@@ -108,6 +108,7 @@ export function useChordAutocomplete({
   const [selectedPositions, setSelectedPositions] = useState(new Map());
 
   const stringCount = getStringCountForInstrument(instrument, tuning);
+  const trimmedQuery = (query ?? '').trim();
   const tuningMatch = (c) =>
     (c.tuning === 'ukulele_standard' || c.tuning === 'standard') &&
     (tuning === 'ukulele_standard' || tuning === 'standard')
@@ -139,10 +140,11 @@ export function useChordAutocomplete({
     return Array.from(baseNames).sort((a, b) => a.localeCompare(b));
   }, [usedChordNames]);
 
-  // Load only common chords + personal + used-by-name + search (no full library)
+  // Load common + personal + used-by-name + search; full main library for fret search
   const { data: commonChordsData } = useCommonChords(instrument, tuning);
   const { data: personalChordsData } = usePersonalChords(userId, instrument, tuning);
   const { data: chordsByNamesData } = useChordsByNames(usedChordBaseNames, instrument, tuning);
+  const { data: mainLibraryChordsData } = useMainLibraryChords(instrument, tuning);
   const { data: searchChordsData } = useChordSearch(
     debouncedQuery && debouncedQuery.trim() ? normalizeQuery(debouncedQuery) : '',
     { limit: CHORD_SEARCH_LIMIT, instrument, tuning }
@@ -151,6 +153,7 @@ export function useChordAutocomplete({
   const commonChords = commonChordsData?.chords || [];
   const personalChords = personalChordsData?.chords || [];
   const chordsByNames = chordsByNamesData?.chords || [];
+  const mainLibraryChords = mainLibraryChordsData?.chords || [];
   const searchChords = searchChordsData?.chords || [];
 
   // Merge into current chord set (filter by instrument/tuning, add source)
@@ -235,9 +238,15 @@ export function useChordAutocomplete({
   }, [usedChordNames, query]);
 
   // Expand filtered names into chord entries (only the specific position used).
-  // When query is a fret pattern or prefix (e.g. "0", "00", "000", "0003"), expand all used chords then filter by frets.
+  // Fret prefix (1–3 chars): show default list (all used expanded, no filter).
+  // Full fret pattern (4 chars): expand all used, filter by frets.
+  // Otherwise: filter by name (usedFilteredNames) then expand.
+  const isFretPrefixOnly = isFretPatternOrPrefixQuery(trimmedQuery, stringCount) && trimmedQuery.length < stringCount;
   const usedFiltered = useMemo(() => {
-    const namesToExpand = isFretPatternOrPrefixQuery(query, stringCount) ? usedChordNames : usedFilteredNames;
+    const namesToExpand =
+      isFretPrefixOnly ? usedChordNames
+      : isFretPatternQuery(trimmedQuery, stringCount) ? usedChordNames
+      : usedFilteredNames;
     const expanded = namesToExpand.map(chordText => {
       // Parse chord format: "C:2:abc123" or "C::abc123" or "C:2" or "C"
       // Note: extractUsedChords should have already stripped IDs, but handle defensively
@@ -288,14 +297,11 @@ export function useChordAutocomplete({
       // Last resort: return a placeholder (only if no chord data exists at all)
       return { name: actualChordName, frets: null, position: chordPosition };
     });
-    if (isFretPatternOrPrefixQuery(query, stringCount)) {
-      const matchFrets = query.length === stringCount
-        ? (c) => chordFretsMatchPattern(c, query)
-        : (c) => chordFretsMatchPrefix(c, query);
-      return expanded.filter(matchFrets);
-    }
+    // Fret prefix only: show default list (no fret filter). Full fret pattern: filter by frets.
+    if (isFretPrefixOnly) return expanded;
+    if (isFretPatternQuery(trimmedQuery, stringCount)) return expanded.filter((c) => chordFretsMatchPattern(c, trimmedQuery));
     return expanded;
-  }, [query, stringCount, usedChordNames, usedFilteredNames, getVariationsForName, instrument, tuning, currentChords]);
+  }, [query, trimmedQuery, stringCount, usedChordNames, usedFilteredNames, getVariationsForName, instrument, tuning, currentChords]);
 
   // Helper: add source and filter by instrument/tuning
   const withSource = (arr, src) =>
@@ -307,7 +313,7 @@ export function useChordAutocomplete({
         source: typeof src === 'function' ? src(c) : (c.libraryType === 'personal' ? 'personal' : 'main'),
       }));
 
-  // Library list: empty query = common + personal; non-empty = search results; fret pattern = filter pool by frets
+  // Library list: empty query = common + personal; fret prefix = same default (effective query ''); full fret pattern = search by frets; else = name search
   const libraryFilteredAll = useMemo(() => {
     const usedSet = new Set(usedChordNames);
     const excludeUsed = (chords) =>
@@ -317,20 +323,28 @@ export function useChordAutocomplete({
         return !usedSet.has(key);
       });
 
-    if (isFretPatternOrPrefixQuery(query, stringCount)) {
-      const pool = [
-        ...withSource(commonChords, 'main'),
-        ...withSource(personalChords, 'personal'),
-        ...withSource(chordsByNames, (c) => (c.libraryType === 'personal' ? 'personal' : 'main')),
-      ];
-      const matchFrets =
-        query.length === stringCount
-          ? (c) => chordFretsMatchPattern(c, query)
-          : (c) => chordFretsMatchPrefix(c, query);
-      return excludeUsed(pool.filter(matchFrets));
+    // When trimmed query is a fret prefix (1–3 digits/x), treat library as empty so we show default list
+    const effectiveLibraryQuery =
+      isFretPatternOrPrefixQuery(trimmedQuery, stringCount) && trimmedQuery.length < stringCount ? '' : trimmedQuery;
+
+    // Full fret pattern (4 chars): search all chords (common + personal + full main library) by frets
+    if (isFretPatternQuery(trimmedQuery, stringCount)) {
+      const fromCommon = withSource(commonChords, 'main');
+      const fromPersonal = withSource(personalChords, 'personal');
+      const fromMain = withSource(mainLibraryChords, 'main');
+      const seen = new Set();
+      const pool = [];
+      for (const c of [...fromCommon, ...fromPersonal, ...fromMain]) {
+        const key = c.id ?? `${c.name}:${c.position ?? 1}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        pool.push(c);
+      }
+      const matched = pool.filter((c) => chordFretsMatchPattern(c, trimmedQuery));
+      return excludeUsed(matched);
     }
 
-    if (query && query.trim()) {
+    if (effectiveLibraryQuery) {
       // Union common + personal + search results, then filter by smart match (root+accidental, suffix prefix).
       // This ensures we show results immediately from already-loaded common/personal (e.g. A7) even before
       // debounced API search returns; search adds extra chords (maj7, dim, etc.) when they arrive.
@@ -350,11 +364,12 @@ export function useChordAutocomplete({
         union.push(c);
       }
       const filteredBySmartMatch = union.filter((c) =>
-        chordMatchesQuery(c.name, query)
+        chordMatchesQuery(c.name, effectiveLibraryQuery)
       );
       return excludeUsed(filteredBySmartMatch);
     }
 
+    // Empty or fret-prefix: default list (common + personal)
     const fromCommonAndPersonal = [
       ...withSource(commonChords, 'main'),
       ...withSource(personalChords, 'personal'),
@@ -367,6 +382,8 @@ export function useChordAutocomplete({
     commonChords,
     personalChords,
     chordsByNames,
+    mainLibraryChords,
+    currentChords,
     searchChords,
     instrument,
     tuning,

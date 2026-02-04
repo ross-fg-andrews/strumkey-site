@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { useFixedStyleWithIOsKeyboard } from 'react-ios-keyboard-viewport';
 import ChordDiagram from './ChordDiagram';
-import { normalizeQuery } from '../utils/chord-autocomplete-helpers';
+import { normalizeQuery, relativeFretsToAbsolute } from '../utils/chord-autocomplete-helpers';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
 
 const chordLabelClass = 'inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium';
@@ -9,9 +9,10 @@ const chordLabelClass = 'inline-flex items-center gap-1.5 px-2 py-1 bg-primary-1
 /** Max library chords to render until user clicks "Show more" (progressive rendering) */
 const LIBRARY_RENDER_CAP = 50;
 
-function formatFretsForDisplay(frets) {
+function formatFretsForDisplay(frets, baseFret) {
   if (!Array.isArray(frets) || frets.length === 0) return '—';
-  return frets.map(f => f === null ? 'x' : String(f)).join('');
+  const toDisplay = baseFret != null && baseFret > 0 ? relativeFretsToAbsolute(frets, baseFret) : frets;
+  return toDisplay.map(f => (f === null || f === undefined || f === 'x' ? 'x' : String(f))).join('');
 }
 
 function formatPosition(position) {
@@ -218,7 +219,7 @@ export default function ChordInsertionModal({
                           <span className={chordLabelClass}>{formatChordNameForDisplay(chordName)}</span>
                         </div>
                         <div className="flex flex-col items-end text-gray-600 text-sm font-normal flex-shrink-0">
-                          <span>{formatFretsForDisplay(chordFrets)}</span>
+                          <span>{formatFretsForDisplay(chordFrets, chordObj.baseFret)}</span>
                           <span className="text-gray-500">{formatPosition(chordObj.position)}</span>
                           {isPersonal && <span className="text-xs">Personal</span>}
                         </div>
@@ -273,7 +274,7 @@ export default function ChordInsertionModal({
                               <span className={chordLabelClass}>{formatChordNameForDisplay(chordName)}</span>
                             </div>
                             <div className="flex flex-col items-end text-gray-600 text-sm font-normal flex-shrink-0">
-                              <span>{formatFretsForDisplay(chordFrets)}</span>
+                              <span>{formatFretsForDisplay(chordFrets, chordObj.baseFret)}</span>
                               <span className="text-gray-500">{formatPosition(chordObj.position)}</span>
                               {isPersonal && <span className="text-xs">Personal</span>}
                             </div>
@@ -322,7 +323,7 @@ export default function ChordInsertionModal({
                               <span className={chordLabelClass}>{formatChordNameForDisplay(chordName)}</span>
                             </div>
                             <div className="flex flex-col items-end text-gray-600 text-sm font-normal flex-shrink-0">
-                              <span>{formatFretsForDisplay(chordFrets)}</span>
+                              <span>{formatFretsForDisplay(chordFrets, chordObj.baseFret)}</span>
                               <span className="text-gray-500">{formatPosition(chordObj.position)}</span>
                               {isPersonal && <span className="text-xs">Personal</span>}
                             </div>

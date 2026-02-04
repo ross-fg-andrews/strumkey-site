@@ -172,16 +172,71 @@ export function isFretPatternOrPrefixQuery(query, stringCount) {
 }
 
 /**
- * Build frets string from chord object (same convention as formatFretsForDisplay):
- * null/undefined → 'x', otherwise String(fret). Compare to normalized pattern (x case-insensitive).
+ * Convert relative fret positions to absolute using baseFret.
+ * Same formula as ChordDiagram: absoluteFret = baseFret + (relativeFret - 1)
+ * Open (0) and muted (null) stay as-is.
+ * @param {Array<number|null>} frets - Relative frets from chord (e.g. [1,1,1,1])
+ * @param {number} baseFret - Base fret (e.g. 5)
+ * @returns {Array<number|string>} Absolute frets for display (e.g. [5,5,5,5]); 0 stays 0, null → 'x'
+ */
+export function relativeFretsToAbsolute(frets, baseFret) {
+  if (!Array.isArray(frets) || frets.length === 0) return frets;
+  if (baseFret == null || baseFret <= 0) return frets;
+  return frets.map((f) => {
+    if (f === null || f === undefined) return 'x';
+    if (f === 0) return 0;
+    const n = typeof f === 'number' ? f : parseInt(f, 10);
+    return isNaN(n) ? 'x' : baseFret + (n - 1);
+  });
+}
+
+/**
+ * Get comparable frets string from a chord object (absolute fret numbers for display and search).
+ * When chord has baseFret > 0, frets in DB are relative to baseFret — we convert to absolute.
+ * Handles: array [0,0,0,3], [1,1,1,1] with baseFret 5 → "5555", string "0003", JSON string.
+ * Returns null if frets cannot be read.
+ */
+export function getFretsString(chordObj) {
+  if (!chordObj) return null;
+  let frets = chordObj.frets;
+  if (frets === undefined || frets === null) return null;
+  const baseFret = chordObj.baseFret;
+  const useAbsolute = baseFret != null && baseFret > 0;
+
+  // JSON string from DB e.g. "[0,0,0,3]"
+  if (typeof frets === 'string' && frets.startsWith('[')) {
+    try {
+      frets = JSON.parse(frets);
+    } catch {
+      return frets.trim().toLowerCase();
+    }
+  }
+  if (Array.isArray(frets) && frets.length > 0) {
+    const toDisplay = useAbsolute ? relativeFretsToAbsolute(frets, baseFret) : frets;
+    return toDisplay.map((f) => (f === null || f === undefined || f === 'x' ? 'x' : String(f))).join('').toLowerCase();
+  }
+  if (typeof frets === 'string' && frets.length > 0) {
+    return frets.trim().toLowerCase();
+  }
+  if (typeof frets === 'object' && !Array.isArray(frets) && frets !== null) {
+    const vals = Object.values(frets);
+    if (vals.length > 0) {
+      const toDisplay = useAbsolute ? relativeFretsToAbsolute(vals, baseFret) : vals;
+      return toDisplay.map((f) => (f === null || f === undefined || f === 'x' ? 'x' : String(f))).join('').toLowerCase();
+    }
+  }
+  return null;
+}
+
+/**
+ * True when the chord's frets string equals the pattern (e.g. "0003" matches C).
  */
 export function chordFretsMatchPattern(chordObj, patternStr) {
-  if (!chordObj || !patternStr) return false;
-  const frets = chordObj.frets;
-  if (!Array.isArray(frets) || frets.length === 0) return false;
-  const fretsStr = frets.map(f => f === null || f === undefined ? 'x' : String(f)).join('').toLowerCase();
-  const normalizedPattern = patternStr.toLowerCase();
-  return fretsStr === normalizedPattern;
+  if (!patternStr || typeof patternStr !== 'string') return false;
+  const fretsStr = getFretsString(chordObj);
+  if (fretsStr == null) return false;
+  const normalized = patternStr.trim().toLowerCase();
+  return fretsStr.length === normalized.length && fretsStr === normalized;
 }
 
 /**

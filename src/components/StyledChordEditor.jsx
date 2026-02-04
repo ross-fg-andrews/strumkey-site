@@ -2,6 +2,7 @@ import { useRef, useEffect, useState, useMemo, forwardRef, useImperativeHandle }
 import { createPortal } from 'react-dom';
 import { findChord } from '../utils/chord-library';
 import { useChordAutocomplete, splitLibraryForDisplay } from '../hooks/useChordAutocomplete';
+import { isFretPatternQuery, isFretPatternOrPrefixQuery, getStringCountForInstrument } from '../utils/chord-autocomplete-helpers';
 import ChordInsertionModal from './ChordInsertionModal';
 import ChordSearchFullResults from './ChordSearchFullResults';
 import CustomChordModal from './CustomChordModal';
@@ -84,9 +85,14 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
   } = useChordAutocomplete({ value, instrument, tuning, userId });
 
   const [fullSearchResults, setFullSearchResults] = useState(null);
+  const stringCount = getStringCountForInstrument(instrument, tuning);
+  const trimmedQuery = (query ?? '').trim();
+  const isFretPrefixOnly = trimmedQuery.length > 0 && isFretPatternOrPrefixQuery(trimmedQuery, stringCount) && trimmedQuery.length < stringCount;
   useEffect(() => {
-    if (!showDropdown || !query?.trim()) setFullSearchResults(null);
-  }, [showDropdown, query]);
+    const trimmed = query?.trim() ?? '';
+    const isFretSearch = trimmed.length > 0 && isFretPatternQuery(trimmed, stringCount);
+    if (!showDropdown || !trimmed || isFretSearch || isFretPrefixOnly) setFullSearchResults(null);
+  }, [showDropdown, query, stringCount, isFretPrefixOnly]);
 
   const effectiveLibrary = useMemo(() => {
     if (fullSearchResults != null) return splitLibraryForDisplay(fullSearchResults);
@@ -1484,7 +1490,7 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
       `}</style>
       
       {/* Full-library search: only mounts when modal open and user has typed (deferred load) */}
-      {showDropdown && query?.trim() && (
+      {showDropdown && query?.trim() && !isFretPatternQuery(trimmedQuery, stringCount) && !isFretPrefixOnly && (
         <ChordSearchFullResults
           query={query}
           userId={userId}
