@@ -1303,14 +1303,14 @@ export default function SongSheet() {
               !chordsPanelVisible 
                 ? 'max-h-0 overflow-hidden mb-0' 
                 : 'max-h-[1000px]'
-            } ${chordsPanelVisible ? 'sticky top-14 z-10 bg-gray-50 origin-top-left transition-transform duration-300 ease-out' : ''} ${
-              chordDiagramsSticky ? 'scale-[0.8]' : ''
+            } ${chordsPanelVisible ? 'sticky top-14 z-10 bg-gray-50' : ''} ${
+              chordDiagramsSticky ? 'w-[100vw] max-w-none ml-[calc(50%-50vw)] overflow-hidden' : ''
             }`}
           >
-            {/* Horizontal scrollable line */}
+            {/* Horizontal scrollable line – scale applied to inner so full row scales and bar fills width */}
             <div className={`flex gap-x-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent transition-opacity duration-200 ${
               chordsPanelVisible ? 'opacity-100 delay-150' : 'opacity-0 delay-0'
-            }`}>
+            } ${chordDiagramsSticky ? 'w-[125vw] min-w-[125vw] origin-top-left transition-transform duration-150 ease-out scale-[0.8]' : ''}`}>
               {chordDiagrams.map(({ name, frets, baseFret, position, instrument: chordInstrument, tuning: chordTuning }) => (
                 <ChordDiagram 
                   key={`${name}-${position}`}
