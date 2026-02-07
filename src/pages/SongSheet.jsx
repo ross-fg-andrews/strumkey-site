@@ -68,6 +68,8 @@ export default function SongSheet() {
   const [sectionDropdownOpen, setSectionDropdownOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [chordsPanelVisible, setChordsPanelVisible] = useState(true);
+  const [titleScrolledOut, setTitleScrolledOut] = useState(false);
+  const [chordDiagramsSticky, setChordDiagramsSticky] = useState(false);
 
   const [editViewportHeight, setEditViewportHeight] = useState(
     typeof window !== 'undefined' && window.visualViewport
@@ -95,7 +97,12 @@ export default function SongSheet() {
 
   const menuRef = useRef(null);
   const songSelectorRef = useRef(null);
-  
+  const headerBlockRef = useRef(null);
+  const chordDiagramsRef = useRef(null);
+
+  // Nav bar height (px) – must match Navigation h-14 for scroll/intersection logic
+  const NAV_BAR_HEIGHT = 56;
+
   // Instrument and tuning settings (can be made configurable later)
   const instrument = 'ukulele';
   const tuning = 'ukulele_standard';
@@ -574,6 +581,9 @@ export default function SongSheet() {
       chordsPanelVisible,
       hasChords,
       toggleChordsPanel: () => setChordsPanelVisible(prev => !prev),
+      songTitle: song.title,
+      songArtist: song.artist,
+      showTitleInNavBar: titleScrolledOut,
       handleEditClick: () => {
         // Store current chord mode before entering edit mode
         setPreviousChordMode(chordMode);
@@ -601,7 +611,7 @@ export default function SongSheet() {
         setMenuOpen(false);
       },
     };
-  }, [isViewMode, isEditing, menuOpen, chordMode, canEdit, isCreator, song, chordsPanelVisible, uniqueChordPairs, setChordMode, setMenuOpen]);
+  }, [isViewMode, isEditing, menuOpen, chordMode, canEdit, isCreator, song, chordsPanelVisible, uniqueChordPairs, titleScrolledOut, setChordMode, setMenuOpen]);
 
   // Register/unregister song actions when value changes
   useEffect(() => {
@@ -615,6 +625,38 @@ export default function SongSheet() {
       }
     };
   }, [songActionsValue, registerSongActions]);
+
+  // Title/artist in nav bar: observe when header block scrolls under nav (view mode only)
+  useEffect(() => {
+    if (!isViewMode || isEditing || !headerBlockRef.current || !song) return;
+    const el = headerBlockRef.current;
+    const observer = new IntersectionObserver(
+      ([entry]) => setTitleScrolledOut(!entry.isIntersecting),
+      { root: null, rootMargin: `-${NAV_BAR_HEIGHT}px 0px 0px 0px`, threshold: 0 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isViewMode, isEditing, song]);
+
+  // Chord diagrams sticky + shrink: detect when chord section touches nav (view mode, panel visible only)
+  useEffect(() => {
+    if (!isViewMode || isEditing || !chordsPanelVisible || chordDiagrams.length === 0) return;
+    let rafId = null;
+    const onScroll = () => {
+      rafId = requestAnimationFrame(() => {
+        const el = chordDiagramsRef.current;
+        if (!el) return;
+        const top = el.getBoundingClientRect().top;
+        setChordDiagramsSticky(top <= NAV_BAR_HEIGHT);
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll(); // initial check
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [isViewMode, isEditing, chordsPanelVisible, chordDiagrams.length]);
 
 
   // Show loading state when viewing and song is not yet loaded
@@ -940,7 +982,7 @@ export default function SongSheet() {
         )}
       >
       <div className="mb-6">
-        <div className="flex items-start justify-between mb-2">
+        <div ref={headerBlockRef} className="flex items-start justify-between mb-2">
           <div className="flex-1 min-w-0">
             {isEditing ? (
               <>
@@ -1256,10 +1298,13 @@ export default function SongSheet() {
         {/* Chord Charts Section */}
         {chordDiagrams.length > 0 ? (
           <div 
+            ref={chordDiagramsRef}
             className={`mb-6 order-1 transition-all duration-300 ease-in-out ${
               !chordsPanelVisible 
                 ? 'max-h-0 overflow-hidden mb-0' 
                 : 'max-h-[1000px]'
+            } ${chordsPanelVisible ? 'sticky top-14 z-10 bg-gray-50 origin-top-left transition-transform duration-300 ease-out' : ''} ${
+              chordDiagramsSticky ? 'scale-[0.8]' : ''
             }`}
           >
             {/* Horizontal scrollable line */}

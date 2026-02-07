@@ -132,6 +132,17 @@ export default function Navigation() {
           >
             <MenuIcon className="h-6 w-6 text-gray-700" />
           </button>
+
+          {/* Middle: song title/artist when scrolled under nav (song page only) */}
+          {isSongPage && songActions?.showTitleInNavBar && (songActions.songTitle || songActions.songArtist) && (
+            <div className="flex-1 min-w-0 mx-2 flex items-center">
+              <span className="text-sm text-gray-700 truncate block">
+                {songActions.songTitle && <span className="font-semibold">{songActions.songTitle}</span>}
+                {songActions.songTitle && songActions.songArtist && ' · '}
+                {songActions.songArtist && <span>{songActions.songArtist}</span>}
+              </span>
+            </div>
+            )}
           
           {/* Right: Reserved for contextual buttons */}
           <div className="flex items-center gap-2">
