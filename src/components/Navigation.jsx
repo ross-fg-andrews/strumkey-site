@@ -178,6 +178,12 @@ export default function Navigation() {
                       >
                         Chords Above
                       </button>
+                      <button
+                        onClick={() => songActions.handleExportPdfClick?.()}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
+                      >
+                        Export as PDF
+                      </button>
                       {songActions.isCreator && (
                         <>
                           <div className="border-t border-gray-200 my-1"></div>

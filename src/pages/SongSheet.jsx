@@ -14,6 +14,7 @@ import { findChord } from '../utils/chord-library';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
 import { MicrophoneStageIcon, ChordIcon, PlusIcon, ImportIcon, TextboxIcon } from '../utils/icons';
 import PDFImportModal from '../components/PDFImportModal';
+import PDFExportModal from '../components/PDFExportModal';
 import { useEditingSong } from '../contexts/EditingSongContext';
 
 function EditModeScrollWrapper({ isEditing, scrollContainerRef, editViewportHeight, children, renderBanner }) {
@@ -63,6 +64,7 @@ export default function SongSheet() {
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showPDFExportModal, setShowPDFExportModal] = useState(false);
   const [sectionDropdownOpen, setSectionDropdownOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [chordsPanelVisible, setChordsPanelVisible] = useState(true);
@@ -592,6 +594,10 @@ export default function SongSheet() {
       },
       handleChordModeChange: (mode) => {
         setChordMode(mode);
+        setMenuOpen(false);
+      },
+      handleExportPdfClick: () => {
+        setShowPDFExportModal(true);
         setMenuOpen(false);
       },
     };
@@ -1294,6 +1300,20 @@ export default function SongSheet() {
         ) : null}
       </div>
       </EditModeScrollWrapper>
+
+      {/* PDF Export Modal */}
+      {showPDFExportModal && song && (
+        <PDFExportModal
+          song={song}
+          chords={chords}
+          chordDiagrams={chordDiagrams}
+          instrument={instrument}
+          tuning={tuning}
+          defaultChordMode={chordMode}
+          isOpen={showPDFExportModal}
+          onClose={() => setShowPDFExportModal(false)}
+        />
+      )}
 
       {/* Share with Groups Modal */}
       {showShareModal && song && (
