@@ -3,6 +3,7 @@ import { useMainLibraryChords } from '../db/queries';
 import { updateChordPosition, updateChordPositions, createMainLibraryChord } from '../db/mutations';
 import ChordDiagram from './ChordDiagram';
 import AddVoicingModal from './AddVoicingModal';
+import { formatFretsForDisplay } from '../utils/chord-autocomplete-helpers';
 
 const KEYS = ['A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#'];
 
@@ -315,14 +316,6 @@ export default function ChordVoicingManager() {
     }
   };
 
-  // Format frets for display
-  const formatFrets = (frets) => {
-    if (Array.isArray(frets)) {
-      return frets.map(f => f === null ? 'x' : String(f)).join('');
-    }
-    return String(frets || '');
-  };
-
   return (
     <div className="space-y-6">
       {/* Chord Selector */}
@@ -425,7 +418,7 @@ export default function ChordVoicingManager() {
                     Position {index + 1}
                   </div>
                   <div className="text-sm font-mono text-gray-700 min-w-[4rem]">
-                    {formatFrets(voicing.frets)}
+                    {formatFretsForDisplay(voicing.frets, voicing.baseFret)}
                   </div>
                   <div className="flex-shrink-0">
                     <ChordDiagram

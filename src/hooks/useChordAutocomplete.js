@@ -258,7 +258,9 @@ export function useChordAutocomplete({
   // Fret prefix (1–3 chars): show default list (all used expanded, no filter).
   // Full fret pattern (4 chars): expand all used, filter by frets.
   // Otherwise: filter by name (usedFilteredNames) then expand.
-  const isFretPrefixOnly = isFretPatternOrPrefixQuery(trimmedQuery, stringCount) && trimmedQuery.length < stringCount;
+  // Prefix = fret-like input but incomplete (fewer than stringCount values).
+// Use value count, not char count, so "0,0,0" (3 values) is prefix, "0,0,0,3" (4 values) is full.
+const isFretPrefixOnly = isFretPatternOrPrefixQuery(trimmedQuery, stringCount) && !isFretPatternQuery(trimmedQuery, stringCount);
   const usedFiltered = useMemo(() => {
     const namesToExpand =
       isFretPrefixOnly ? usedChordNames
@@ -335,7 +337,7 @@ export function useChordAutocomplete({
     });
     // Fret prefix only: show default list (no fret filter). Full fret pattern: filter by frets.
     if (isFretPrefixOnly) return expanded;
-    if (isFretPatternQuery(trimmedQuery, stringCount)) return expanded.filter((c) => chordFretsMatchPattern(c, trimmedQuery));
+    if (isFretPatternQuery(trimmedQuery, stringCount)) return expanded.filter((c) => chordFretsMatchPattern(c, trimmedQuery, stringCount));
     return expanded;
   }, [query, trimmedQuery, stringCount, usedChordNames, usedFilteredNames, getVariationsForName, instrument, tuning, currentChords]);
 
@@ -362,8 +364,7 @@ export function useChordAutocomplete({
       });
 
     // When trimmed query is a fret prefix (1–3 digits/x), treat library as empty so we show default list
-    const effectiveLibraryQuery =
-      isFretPatternOrPrefixQuery(trimmedQuery, stringCount) && trimmedQuery.length < stringCount ? '' : trimmedQuery;
+    const effectiveLibraryQuery = isFretPrefixOnly ? '' : trimmedQuery;
 
     // Full fret pattern (4 chars): search all chords (common + personal + full main library) by frets.
     // Add sharp-display variant for each flat chord so user sees both Bb and A# (same fingering).
@@ -379,7 +380,7 @@ export function useChordAutocomplete({
         seen.add(key);
         pool.push(c);
       }
-      const matched = pool.filter((c) => chordFretsMatchPattern(c, trimmedQuery));
+      const matched = pool.filter((c) => chordFretsMatchPattern(c, trimmedQuery, stringCount));
       const withSharpVariants = [];
       for (const c of matched) {
         withSharpVariants.push(c);

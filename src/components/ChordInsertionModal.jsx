@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { useFixedStyleWithIOsKeyboard } from 'react-ios-keyboard-viewport';
 import ChordDiagram from './ChordDiagram';
-import { normalizeQuery, relativeFretsToAbsolute } from '../utils/chord-autocomplete-helpers';
+import { normalizeQuery, formatFretsForDisplay } from '../utils/chord-autocomplete-helpers';
 import { getDisplayChordName } from '../utils/enharmonic';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
 
@@ -9,12 +9,6 @@ const chordLabelClass = 'inline-flex items-center gap-1.5 px-2 py-1 bg-primary-1
 
 /** Max library chords to render until user clicks "Show more" (progressive rendering) */
 const LIBRARY_RENDER_CAP = 50;
-
-function formatFretsForDisplay(frets, baseFret) {
-  if (!Array.isArray(frets) || frets.length === 0) return '—';
-  const toDisplay = baseFret != null && baseFret > 0 ? relativeFretsToAbsolute(frets, baseFret) : frets;
-  return toDisplay.map(f => (f === null || f === undefined || f === 'x' ? 'x' : String(f))).join('');
-}
 
 function formatPosition(position) {
   return `Position ${String(position || 1).padStart(2, '0')}`;
