@@ -1304,7 +1304,7 @@ export default function SongSheet() {
                 ? 'max-h-0 overflow-hidden mb-0' 
                 : 'max-h-[1000px]'
             } ${chordsPanelVisible ? 'sticky top-14 z-10 bg-gray-50' : ''} ${
-              chordDiagramsSticky ? 'w-[100vw] max-w-none ml-[calc(50%-50vw)] overflow-hidden' : ''
+              chordDiagramsSticky ? 'w-[100vw] max-w-none ml-[calc(50%-50vw)] pl-4 overflow-hidden' : ''
             }`}
           >
             {/* Horizontal scrollable line – scale applied to inner so full row scales and bar fills width */}
