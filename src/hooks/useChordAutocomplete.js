@@ -17,6 +17,7 @@ import {
   chordFretsMatchPattern,
   normalizeQuery,
 } from '../utils/chord-autocomplete-helpers';
+import { toDbName, toDisplaySharp } from '../utils/enharmonic';
 
 const SEARCH_DEBOUNCE_MS = 250;
 const CHORD_SEARCH_LIMIT = 50;
@@ -140,13 +141,29 @@ export function useChordAutocomplete({
     return Array.from(baseNames).sort((a, b) => a.localeCompare(b));
   }, [usedChordNames]);
 
+  // Include flat equivalents so we load DB chords for sharp-used chords (e.g. F#m7 -> also load Gbm7)
+  const usedChordBaseNamesForDb = useMemo(() => {
+    const withFlats = new Set(usedChordBaseNames);
+    usedChordBaseNames.forEach(name => {
+      const dbName = toDbName(name);
+      if (dbName) withFlats.add(dbName);
+    });
+    return Array.from(withFlats).sort((a, b) => a.localeCompare(b));
+  }, [usedChordBaseNames]);
+
+  // Search query for DB: translate sharp to flat so DB (flat-only) returns results
+  const searchQueryForDb = useMemo(() => {
+    const raw = debouncedQuery && debouncedQuery.trim() ? normalizeQuery(debouncedQuery) : '';
+    return raw ? (toDbName(raw) || raw) : '';
+  }, [debouncedQuery]);
+
   // Load common + personal + used-by-name + search; full main library for fret search
   const { data: commonChordsData } = useCommonChords(instrument, tuning);
   const { data: personalChordsData } = usePersonalChords(userId, instrument, tuning);
-  const { data: chordsByNamesData } = useChordsByNames(usedChordBaseNames, instrument, tuning);
+  const { data: chordsByNamesData } = useChordsByNames(usedChordBaseNamesForDb, instrument, tuning);
   const { data: mainLibraryChordsData } = useMainLibraryChords(instrument, tuning);
   const { data: searchChordsData } = useChordSearch(
-    debouncedQuery && debouncedQuery.trim() ? normalizeQuery(debouncedQuery) : '',
+    searchQueryForDb,
     { limit: CHORD_SEARCH_LIMIT, instrument, tuning }
   );
 
@@ -268,32 +285,51 @@ export function useChordAutocomplete({
         }
       }
       
-      // Find the specific variation with this position
-      const variations = getVariationsForName(actualChordName);
-      const matchingVariation = variations.find(v => v.position === chordPosition);
-      
-      if (matchingVariation && matchingVariation.frets) {
-        return { ...matchingVariation, position: matchingVariation.position || 1 };
+      // Find the specific variation with this position (try display name first, then DB/flat name for enharmonic)
+      let variations = getVariationsForName(actualChordName);
+      let matchingVariation = variations.find(v => v.position === chordPosition);
+
+      if (!matchingVariation && toDbName(actualChordName) !== actualChordName) {
+        const dbName = toDbName(actualChordName);
+        variations = getVariationsForName(dbName);
+        matchingVariation = variations.find(v => v.position === chordPosition);
       }
-      
-      // Fallback: try to get chord data using findChord with the specific position (without fallback to position 1)
-      // This ensures we get the exact position requested, not a fallback
-      const fallbackChord = findChord(actualChordName, instrument, tuning, chordPosition, {
+
+      if (matchingVariation && matchingVariation.frets) {
+        const base = { ...matchingVariation, position: matchingVariation.position || 1 };
+        return matchingVariation.name !== actualChordName
+          ? { ...base, displayName: actualChordName }
+          : base;
+      }
+
+      // Fallback: try findChord with actual name, then DB name for enharmonic
+      let fallbackChord = findChord(actualChordName, instrument, tuning, chordPosition, {
         databaseChords: currentChords,
       }, null, false);
-      if (fallbackChord && fallbackChord.frets) {
-        return { ...fallbackChord, source: fallbackChord.libraryType === 'personal' ? 'personal' : 'main', position: fallbackChord.position || 1 };
+      if (!fallbackChord && toDbName(actualChordName) !== actualChordName) {
+        fallbackChord = findChord(toDbName(actualChordName), instrument, tuning, chordPosition, {
+          databaseChords: currentChords,
+        }, null, false);
       }
-      
+      if (fallbackChord && fallbackChord.frets) {
+        const base = { ...fallbackChord, source: fallbackChord.libraryType === 'personal' ? 'personal' : 'main', position: fallbackChord.position || 1 };
+        return actualChordName !== fallbackChord.name ? { ...base, displayName: actualChordName } : base;
+      }
+
       // If exact position not found, try with fallback enabled (for backward compatibility)
-      // This handles cases where position data might be missing
-      const fallbackWithPosition1 = findChord(actualChordName, instrument, tuning, chordPosition, {
+      let fallbackWithPosition1 = findChord(actualChordName, instrument, tuning, chordPosition, {
         databaseChords: currentChords,
       }, null, true);
-      if (fallbackWithPosition1 && fallbackWithPosition1.frets) {
-        return { ...fallbackWithPosition1, source: fallbackWithPosition1.libraryType === 'personal' ? 'personal' : 'main', position: fallbackWithPosition1.position || 1 };
+      if (!fallbackWithPosition1 && toDbName(actualChordName) !== actualChordName) {
+        fallbackWithPosition1 = findChord(toDbName(actualChordName), instrument, tuning, chordPosition, {
+          databaseChords: currentChords,
+        }, null, true);
       }
-      
+      if (fallbackWithPosition1 && fallbackWithPosition1.frets) {
+        const base = { ...fallbackWithPosition1, source: fallbackWithPosition1.libraryType === 'personal' ? 'personal' : 'main', position: fallbackWithPosition1.position || 1 };
+        return actualChordName !== fallbackWithPosition1.name ? { ...base, displayName: actualChordName } : base;
+      }
+
       // Last resort: return a placeholder (only if no chord data exists at all)
       return { name: actualChordName, frets: null, position: chordPosition };
     });
@@ -316,10 +352,12 @@ export function useChordAutocomplete({
   // Library list: empty query = common + personal; fret prefix = same default (effective query ''); full fret pattern = search by frets; else = name search
   const libraryFilteredAll = useMemo(() => {
     const usedSet = new Set(usedChordNames);
+    // Use displayName when present so sharp/flat variants are excluded independently (e.g. Bb vs A#)
     const excludeUsed = (chords) =>
       chords.filter((v) => {
         const pos = v.position ?? 1;
-        const key = pos > 1 ? `${v.name}:${v.position}` : v.name;
+        const nameForKey = v.displayName ?? v.name;
+        const key = pos > 1 ? `${nameForKey}:${v.position}` : nameForKey;
         return !usedSet.has(key);
       });
 
@@ -327,7 +365,8 @@ export function useChordAutocomplete({
     const effectiveLibraryQuery =
       isFretPatternOrPrefixQuery(trimmedQuery, stringCount) && trimmedQuery.length < stringCount ? '' : trimmedQuery;
 
-    // Full fret pattern (4 chars): search all chords (common + personal + full main library) by frets
+    // Full fret pattern (4 chars): search all chords (common + personal + full main library) by frets.
+    // Add sharp-display variant for each flat chord so user sees both Bb and A# (same fingering).
     if (isFretPatternQuery(trimmedQuery, stringCount)) {
       const fromCommon = withSource(commonChords, 'main');
       const fromPersonal = withSource(personalChords, 'personal');
@@ -341,7 +380,15 @@ export function useChordAutocomplete({
         pool.push(c);
       }
       const matched = pool.filter((c) => chordFretsMatchPattern(c, trimmedQuery));
-      return excludeUsed(matched);
+      const withSharpVariants = [];
+      for (const c of matched) {
+        withSharpVariants.push(c);
+        const sharpName = toDisplaySharp(c.name);
+        if (sharpName !== c.name) {
+          withSharpVariants.push({ ...c, displayName: sharpName });
+        }
+      }
+      return excludeUsed(withSharpVariants);
     }
 
     if (effectiveLibraryQuery) {

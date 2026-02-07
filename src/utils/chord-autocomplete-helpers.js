@@ -1,3 +1,5 @@
+import { rootsAreEquivalent } from './enharmonic';
+
 /**
  * Extract unique chords from lyrics text that are in [ChordName] format
  * Parses chord markers to extract chord name and position, excluding ChordIDs
@@ -109,6 +111,7 @@ function parseChordQuery(normalizedQuery) {
  * - "A" matches only natural A chords (A, Am, A7), not Ab or A#
  * - "Ab" / "Af" match only Ab chords
  * - "A#" / "As" match only A# chords
+ * - Enharmonic: query "F#m7" matches DB chord "Gbm7" (same pitch)
  * - Suffix prefix matches start of chord suffix (e.g. "Am" matches Am, Am7, Amaj7)
  */
 export function chordMatchesQuery(chordName, query) {
@@ -126,7 +129,10 @@ export function chordMatchesQuery(chordName, query) {
     return chordSuffix.toLowerCase().startsWith(suffixPrefix.toLowerCase());
   }
 
-  if (chordRoot.toLowerCase() !== parsedRoot.toLowerCase()) return false;
+  const rootsMatch =
+    chordRoot.toLowerCase() === parsedRoot.toLowerCase() ||
+    rootsAreEquivalent(chordRoot, parsedRoot);
+  if (!rootsMatch) return false;
   return chordSuffix.toLowerCase().startsWith(suffixPrefix.toLowerCase());
 }
 

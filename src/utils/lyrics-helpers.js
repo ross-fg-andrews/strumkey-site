@@ -1,3 +1,4 @@
+import { toDbName } from './enharmonic';
 
 /**
  * Parse lyrics text into lines and extract chords
@@ -458,9 +459,9 @@ export function lyricsWithChordsToText(lyrics, chords = []) {
 export function isChordInMainLibrary(chordName, instrument, tuning, options = {}) {
   const { mainLibraryChords = [] } = options;
   
-  // Check database main library
+  // Check database main library (exact name or flat equivalent for sharp chords)
   const inDatabase = mainLibraryChords.some(c =>
-    c.name === chordName &&
+    (c.name === chordName || c.name === toDbName(chordName)) &&
     c.instrument === instrument &&
     c.tuning === tuning &&
     c.libraryType === 'main'
