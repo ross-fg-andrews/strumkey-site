@@ -1,19 +1,14 @@
 import { useRef, useEffect, useState } from 'react';
 import { useFixedStyleWithIOsKeyboard } from 'react-ios-keyboard-viewport';
 import ChordDiagram from './ChordDiagram';
-import { normalizeQuery, relativeFretsToAbsolute } from '../utils/chord-autocomplete-helpers';
+import { normalizeQuery, formatFretsForDisplay } from '../utils/chord-autocomplete-helpers';
+import { getDisplayChordName } from '../utils/enharmonic';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
 
 const chordLabelClass = 'inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium';
 
 /** Max library chords to render until user clicks "Show more" (progressive rendering) */
 const LIBRARY_RENDER_CAP = 50;
-
-function formatFretsForDisplay(frets, baseFret) {
-  if (!Array.isArray(frets) || frets.length === 0) return '—';
-  const toDisplay = baseFret != null && baseFret > 0 ? relativeFretsToAbsolute(frets, baseFret) : frets;
-  return toDisplay.map(f => (f === null || f === undefined || f === 'x' ? 'x' : String(f))).join('');
-}
 
 function formatPosition(position) {
   return `Position ${String(position || 1).padStart(2, '0')}`;
@@ -187,6 +182,7 @@ export default function ChordInsertionModal({
                     const globalIndex = filteredElements.length + index;
                     const isSelected = globalIndex === selectedIndex;
                     const chordName = chordObj.name || chordObj;
+                    const displayName = chordObj.displayName ?? getDisplayChordName(chordName, query, normalizeQuery);
                     const chordFrets = chordObj.frets;
                     const isPersonal = chordObj.source === 'personal' || personalChordNames.has(chordName);
                     
@@ -198,7 +194,7 @@ export default function ChordInsertionModal({
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          onSelectChord(chordName, chordObj.position, chordObj.id ?? null);
+                          onSelectChord(displayName, chordObj.position, chordObj.id ?? null);
                         }}
                         className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center justify-between gap-3 ${
                           isSelected ? 'bg-primary-50' : ''
@@ -216,7 +212,7 @@ export default function ChordInsertionModal({
                               />
                             </div>
                           )}
-                          <span className={chordLabelClass}>{formatChordNameForDisplay(chordName)}</span>
+                          <span className={chordLabelClass}>{formatChordNameForDisplay(displayName)}</span>
                         </div>
                         <div className="flex flex-col items-end text-gray-600 text-sm font-normal flex-shrink-0">
                           <span>{formatFretsForDisplay(chordFrets, chordObj.baseFret)}</span>
@@ -243,6 +239,7 @@ export default function ChordInsertionModal({
                         const globalIndex = filteredElements.length + usedFiltered.length + index;
                         const isSelected = globalIndex === selectedIndex;
                         const chordName = chordObj.name || chordObj;
+                        const displayName = chordObj.displayName ?? getDisplayChordName(chordName, query, normalizeQuery);
                         const chordFrets = chordObj.frets;
                         const isPersonal = chordObj.source === 'personal' || personalChordNames.has(chordName);
                         return (
@@ -253,7 +250,7 @@ export default function ChordInsertionModal({
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              onSelectChord(chordName, chordObj.position, chordObj.id ?? null);
+                              onSelectChord(displayName, chordObj.position, chordObj.id ?? null);
                             }}
                             className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center justify-between gap-3 ${
                               isSelected ? 'bg-primary-50' : ''
@@ -271,7 +268,7 @@ export default function ChordInsertionModal({
                                   />
                                 </div>
                               )}
-                              <span className={chordLabelClass}>{formatChordNameForDisplay(chordName)}</span>
+                              <span className={chordLabelClass}>{formatChordNameForDisplay(displayName)}</span>
                             </div>
                             <div className="flex flex-col items-end text-gray-600 text-sm font-normal flex-shrink-0">
                               <span>{formatFretsForDisplay(chordFrets, chordObj.baseFret)}</span>
@@ -292,6 +289,7 @@ export default function ChordInsertionModal({
                         const globalIndex = filteredElements.length + usedFiltered.length + libraryFilteredCommon.length + index;
                         const isSelected = globalIndex === selectedIndex;
                         const chordName = chordObj.name || chordObj;
+                        const displayName = chordObj.displayName ?? getDisplayChordName(chordName, query, normalizeQuery);
                         const chordFrets = chordObj.frets;
                         const isPersonal = chordObj.source === 'personal' || personalChordNames.has(chordName);
                         return (
@@ -302,7 +300,7 @@ export default function ChordInsertionModal({
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              onSelectChord(chordName, chordObj.position, chordObj.id ?? null);
+                              onSelectChord(displayName, chordObj.position, chordObj.id ?? null);
                             }}
                             className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors flex items-center justify-between gap-3 ${
                               isSelected ? 'bg-primary-50' : ''
@@ -320,7 +318,7 @@ export default function ChordInsertionModal({
                                   />
                                 </div>
                               )}
-                              <span className={chordLabelClass}>{formatChordNameForDisplay(chordName)}</span>
+                              <span className={chordLabelClass}>{formatChordNameForDisplay(displayName)}</span>
                             </div>
                             <div className="flex flex-col items-end text-gray-600 text-sm font-normal flex-shrink-0">
                               <span>{formatFretsForDisplay(chordFrets, chordObj.baseFret)}</span>

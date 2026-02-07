@@ -1,6 +1,8 @@
 import { useRef, useEffect, useState } from 'react';
 import { findChord } from '../utils/chord-library';
 import { useChordAutocomplete } from '../hooks/useChordAutocomplete';
+import { normalizeQuery } from '../utils/chord-autocomplete-helpers';
+import { getDisplayChordName } from '../utils/enharmonic';
 import ChordInsertionModal from './ChordInsertionModal';
 import CustomChordModal from './CustomChordModal';
 import { createPersonalChord } from '../db/mutations';
@@ -65,18 +67,19 @@ export default function ChordAutocomplete({
       setShowCustomChordModal(true);
       setShowDropdown(false);
     } else {
-      // Chord selected
+      // Chord selected - use display name (e.g. F#m7) not DB name (e.g. Gbm7) when user searched sharp
       const chordIndex = selectedIndex - filteredElements.length;
       const allFiltered = [...usedFiltered, ...libraryFiltered];
       if (allFiltered[chordIndex]) {
         const selectedChord = allFiltered[chordIndex];
-        const chordName = selectedChord.name || selectedChord;
+        const dbName = selectedChord.name || selectedChord;
+        const displayName = selectedChord.displayName ?? getDisplayChordName(dbName, query, normalizeQuery);
         const chordPosition = selectedChord.position;
         const chordId = selectedChord.id || null;
         if (chordPosition) {
-          handleChordPositionSelect(chordName, chordPosition);
+          handleChordPositionSelect(displayName, chordPosition);
         }
-        insertChord(chordName, chordPosition || null, chordId);
+        insertChord(displayName, chordPosition || null, chordId);
       }
     }
   };

@@ -1,3 +1,5 @@
+import { rootsAreEquivalent } from './enharmonic';
+
 /**
  * Extract unique chords from lyrics text that are in [ChordName] format
  * Parses chord markers to extract chord name and position, excluding ChordIDs
@@ -109,6 +111,7 @@ function parseChordQuery(normalizedQuery) {
  * - "A" matches only natural A chords (A, Am, A7), not Ab or A#
  * - "Ab" / "Af" match only Ab chords
  * - "A#" / "As" match only A# chords
+ * - Enharmonic: query "F#m7" matches DB chord "Gbm7" (same pitch)
  * - Suffix prefix matches start of chord suffix (e.g. "Am" matches Am, Am7, Amaj7)
  */
 export function chordMatchesQuery(chordName, query) {
@@ -126,7 +129,10 @@ export function chordMatchesQuery(chordName, query) {
     return chordSuffix.toLowerCase().startsWith(suffixPrefix.toLowerCase());
   }
 
-  if (chordRoot.toLowerCase() !== parsedRoot.toLowerCase()) return false;
+  const rootsMatch =
+    chordRoot.toLowerCase() === parsedRoot.toLowerCase() ||
+    rootsAreEquivalent(chordRoot, parsedRoot);
+  if (!rootsMatch) return false;
   return chordSuffix.toLowerCase().startsWith(suffixPrefix.toLowerCase());
 }
 
@@ -150,25 +156,167 @@ export function getStringCountForInstrument(instrument = 'ukulele', tuning = 'uk
 }
 
 /**
- * True when the query is exactly a fret pattern: length === stringCount and every
- * character is a digit (0-9) or x/X (muted).
+ * Parse fret string into array of display values (handles multi-digit frets).
  */
-export function isFretPatternQuery(query, stringCount) {
-  if (!query || typeof query !== 'string') return false;
-  if (query.length !== stringCount) return false;
-  const validFretChar = /^[0-9xX]$/;
-  return [...query].every(char => validFretChar.test(char));
+function parseFretStringToArray(str, stringCount = 4) {
+  if (!str || typeof str !== 'string') return null;
+  const result = [];
+  let i = 0;
+  while (i < str.length && result.length < stringCount) {
+    const c = str[i].toLowerCase();
+    if (c === 'x') {
+      result.push('x');
+      i++;
+    } else if (/\d/.test(c)) {
+      const two = str.slice(i, i + 2);
+      const twoNum = parseInt(two, 10);
+      if (two.length === 2 && twoNum >= 10 && twoNum <= 12) {
+        result.push(String(twoNum));
+        i += 2;
+      } else {
+        result.push(c);
+        i++;
+      }
+    } else {
+      return null;
+    }
+  }
+  return result.length > 0 ? result : null;
 }
 
 /**
- * True when the query is a fret-pattern prefix: 0 < length <= stringCount and every
- * character is a digit (0-9) or x/X. Used to filter chords as the user types (e.g. "0", "00", "000").
+ * Format frets for display with commas between values (e.g. "0,0,0,3" or "9,10,8,10").
+ * Makes multi-digit frets readable (e.g. C7 at position 4: 9,10,8,10 instead of 910810).
+ * @param {Array|string} frets - Fret positions (array e.g. [0,0,0,3] or string "0003"/"910810")
+ * @param {number} baseFret - Optional base fret; when > 0, relative frets are converted to absolute
+ * @param {number} stringCount - Number of strings (default 4); used when frets is a string
+ * @returns {string} Comma-separated fret string for display
+ */
+export function formatFretsForDisplay(frets, baseFret, stringCount = 4) {
+  if (!frets) return '—';
+  let arr;
+  if (Array.isArray(frets)) {
+    arr = baseFret != null && baseFret > 0
+      ? relativeFretsToAbsolute(frets, baseFret)
+      : frets.map(f => (f === null || f === undefined || f === 'x' ? 'x' : f));
+  } else if (typeof frets === 'string') {
+    const parsed = parseFretStringToArray(frets, stringCount);
+    if (parsed && parsed.length === stringCount) {
+      arr = parsed;
+    } else {
+      const legacy = frets.split('').map(c => {
+        const lower = c.toLowerCase();
+        if (lower === 'x') return 'x';
+        const n = parseInt(c, 10);
+        return isNaN(n) ? 'x' : n;
+      });
+      arr = legacy.length === stringCount ? legacy : null;
+    }
+    if (!arr) return '—';
+  } else {
+    return '—';
+  }
+  if (!arr || arr.length === 0) return '—';
+  return arr.map(f => (f === null || f === undefined || f === 'x' ? 'x' : String(f))).join(',');
+}
+
+/**
+ * Validate a single fret token (0-12 or x).
+ */
+function isValidFretToken(token) {
+  const t = (token || '').trim().toLowerCase();
+  if (t === 'x') return 'x';
+  const n = parseInt(t, 10);
+  if (isNaN(n) || n < 0 || n > 12) return null;
+  return String(n);
+}
+
+/**
+ * Parse concatenated fret string (no commas) greedily into array of canonical tokens.
+ * Each fret is 0-12 or x. Greedy: take 2 digits if 10/11/12, else 1 digit.
+ */
+function parseConcatenatedFrets(str, stringCount, allowPartial = false) {
+  if (!str || typeof str !== 'string') return null;
+  const result = [];
+  let i = 0;
+  const maxValues = allowPartial ? stringCount : stringCount;
+  while (i < str.length && result.length < maxValues) {
+    const c = str[i].toLowerCase();
+    if (c === 'x') {
+      result.push('x');
+      i++;
+    } else if (/\d/.test(c)) {
+      const two = str.slice(i, i + 2);
+      const twoNum = parseInt(two, 10);
+      if (two.length === 2 && twoNum >= 10 && twoNum <= 12) {
+        result.push(String(twoNum));
+        i += 2;
+      } else {
+        result.push(c);
+        i++;
+      }
+    } else {
+      return null;
+    }
+  }
+  if (!allowPartial && result.length !== stringCount) return null;
+  if (result.length === 0) return null;
+  return result.join('');
+}
+
+/**
+ * Normalize fret query to canonical form for matching.
+ * Accepts: "9,10,8,10", "910810", "0003", "0,0,0,3", "x013", "x,0,1,3"
+ * @param {string} query - User input
+ * @param {number} stringCount - Expected number of strings (4 for ukulele)
+ * @param {boolean} allowPartial - If true, allow partial input (1 to stringCount values)
+ * @returns {string|null} Canonical form (e.g. "910810") or null if invalid
+ */
+export function normalizeFretQueryForMatching(query, stringCount, allowPartial = false) {
+  if (!query || typeof query !== 'string') return null;
+  const trimmed = query.trim();
+  if (trimmed.length === 0) return null;
+
+  if (trimmed.includes(',')) {
+    const tokens = trimmed.split(',').map(t => t.trim()).filter(Boolean);
+    if (tokens.length === 0) return null;
+    if (!allowPartial && tokens.length !== stringCount) return null;
+    if (allowPartial && (tokens.length > stringCount || tokens.length === 0)) return null;
+    const normalized = [];
+    for (const t of tokens) {
+      const v = isValidFretToken(t);
+      if (v === null) return null;
+      normalized.push(v);
+    }
+    return normalized.join('');
+  }
+
+  // No commas: legacy single-char or greedy multi-digit
+  if (trimmed.length === stringCount && [...trimmed].every(c => /^[0-9xX]$/.test(c))) {
+    return trimmed.toLowerCase();
+  }
+  return parseConcatenatedFrets(trimmed, stringCount, allowPartial);
+}
+
+/**
+ * True when the query is exactly a fret pattern (full match).
+ * Accepts "0003", "0,0,0,3", "910810", "9,10,8,10".
+ */
+export function isFretPatternQuery(query, stringCount) {
+  if (!query || typeof query !== 'string') return false;
+  return normalizeFretQueryForMatching(query, stringCount, false) != null;
+}
+
+/**
+ * True when the query is a fret-pattern prefix (partial input).
+ * Accepts "0", "00", "9,10", "910", etc.
  */
 export function isFretPatternOrPrefixQuery(query, stringCount) {
   if (!query || typeof query !== 'string') return false;
-  if (query.length === 0 || query.length > stringCount) return false;
-  const validFretChar = /^[0-9xX]$/;
-  return [...query].every(char => validFretChar.test(char));
+  const trimmed = query.trim();
+  if (trimmed.length === 0) return false;
+  const normalized = normalizeFretQueryForMatching(query, stringCount, true);
+  return normalized != null && normalized.length > 0;
 }
 
 /**
@@ -229,14 +377,14 @@ export function getFretsString(chordObj) {
 }
 
 /**
- * True when the chord's frets string equals the pattern (e.g. "0003" matches C).
+ * True when the chord's frets string equals the pattern (e.g. "0003" or "0,0,0,3" matches C).
  */
-export function chordFretsMatchPattern(chordObj, patternStr) {
+export function chordFretsMatchPattern(chordObj, patternStr, stringCount = 4) {
   if (!patternStr || typeof patternStr !== 'string') return false;
   const fretsStr = getFretsString(chordObj);
   if (fretsStr == null) return false;
-  const normalized = patternStr.trim().toLowerCase();
-  return fretsStr.length === normalized.length && fretsStr === normalized;
+  const normalized = normalizeFretQueryForMatching(patternStr, stringCount, false);
+  return normalized != null && fretsStr === normalized;
 }
 
 /**

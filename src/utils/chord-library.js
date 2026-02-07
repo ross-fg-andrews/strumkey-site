@@ -1,3 +1,5 @@
+import { toDbName, isSharpRoot } from './enharmonic';
+
 /**
  * Central Chord Library Utility
  * 
@@ -153,6 +155,14 @@ export function findChord(
         c.tuning === tuning &&
         c.libraryType === 'main'
       );
+    }
+  }
+
+  // Enharmonic: if display name has sharp root (e.g. F#m7), try DB name (Gbm7) for fingering data
+  if (!chord && isSharpRoot(chordName)) {
+    const dbName = toDbName(chordName);
+    if (dbName !== chordName) {
+      chord = findChord(dbName, instrument, tuning, positionOrVariation, options, null, allowPositionFallback);
     }
   }
   

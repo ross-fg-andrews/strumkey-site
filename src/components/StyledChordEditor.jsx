@@ -2,7 +2,8 @@ import { useRef, useEffect, useState, useMemo, forwardRef, useImperativeHandle }
 import { createPortal } from 'react-dom';
 import { findChord } from '../utils/chord-library';
 import { useChordAutocomplete, splitLibraryForDisplay } from '../hooks/useChordAutocomplete';
-import { isFretPatternQuery, isFretPatternOrPrefixQuery, getStringCountForInstrument } from '../utils/chord-autocomplete-helpers';
+import { isFretPatternQuery, isFretPatternOrPrefixQuery, getStringCountForInstrument, normalizeQuery } from '../utils/chord-autocomplete-helpers';
+import { getDisplayChordName } from '../utils/enharmonic';
 import ChordInsertionModal from './ChordInsertionModal';
 import ChordSearchFullResults from './ChordSearchFullResults';
 import CustomChordModal from './CustomChordModal';
@@ -87,7 +88,7 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
   const [fullSearchResults, setFullSearchResults] = useState(null);
   const stringCount = getStringCountForInstrument(instrument, tuning);
   const trimmedQuery = (query ?? '').trim();
-  const isFretPrefixOnly = trimmedQuery.length > 0 && isFretPatternOrPrefixQuery(trimmedQuery, stringCount) && trimmedQuery.length < stringCount;
+  const isFretPrefixOnly = trimmedQuery.length > 0 && isFretPatternOrPrefixQuery(trimmedQuery, stringCount) && !isFretPatternQuery(trimmedQuery, stringCount);
   useEffect(() => {
     const trimmed = query?.trim() ?? '';
     const isFretSearch = trimmed.length > 0 && isFretPatternQuery(trimmed, stringCount);
@@ -150,16 +151,17 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
       setShowCustomChordModal(true);
       setShowDropdown(false);
     } else {
-      // Chord selected
+      // Chord selected - use display name (e.g. F#m7) not DB name (e.g. Gbm7) when user searched sharp
       const chordIndex = selectedIndex - filteredElements.length;
       const allFiltered = [...usedFiltered, ...libraryFiltered];
       if (allFiltered[chordIndex]) {
         const selectedChord = allFiltered[chordIndex];
-        const chordName = selectedChord.name || selectedChord;
+        const dbName = selectedChord.name || selectedChord;
+        const displayName = selectedChord.displayName ?? getDisplayChordName(dbName, query, normalizeQuery);
         const chordPosition = selectedChord.position;
         const chordId = selectedChord.id || null;
         // Pass position and ID directly to insertChord to avoid state timing issues
-        insertChord(chordName, chordPosition || null, chordId);
+        insertChord(displayName, chordPosition || null, chordId);
       }
     }
   };
