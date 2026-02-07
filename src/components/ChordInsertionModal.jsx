@@ -212,7 +212,14 @@ export default function ChordInsertionModal({
                               />
                             </div>
                           )}
-                          <span className={chordLabelClass}>{formatChordNameForDisplay(displayName)}</span>
+                          <div className={chordLabelClass}>
+                            <span>{formatChordNameForDisplay(chordName)}</span>
+                            {chordObj.position > 1 && (
+                              <span className="inline-flex items-center justify-center rounded-full bg-primary-700 text-white text-xs font-medium leading-[1em] min-w-[1em] px-1">
+                                {chordObj.position}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className="flex flex-col items-end text-gray-600 text-sm font-normal flex-shrink-0">
                           <span>{formatFretsForDisplay(chordFrets, chordObj.baseFret)}</span>
@@ -268,7 +275,14 @@ export default function ChordInsertionModal({
                                   />
                                 </div>
                               )}
-                              <span className={chordLabelClass}>{formatChordNameForDisplay(displayName)}</span>
+                              <div className={chordLabelClass}>
+                                <span>{formatChordNameForDisplay(chordName)}</span>
+                                {chordObj.position > 1 && (
+                                  <span className="inline-flex items-center justify-center rounded-full bg-primary-700 text-white text-xs font-medium leading-[1em] min-w-[1em] px-1">
+                                    {chordObj.position}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                             <div className="flex flex-col items-end text-gray-600 text-sm font-normal flex-shrink-0">
                               <span>{formatFretsForDisplay(chordFrets, chordObj.baseFret)}</span>
@@ -318,7 +332,14 @@ export default function ChordInsertionModal({
                                   />
                                 </div>
                               )}
-                              <span className={chordLabelClass}>{formatChordNameForDisplay(displayName)}</span>
+                              <div className={chordLabelClass}>
+                                <span>{formatChordNameForDisplay(chordName)}</span>
+                                {chordObj.position > 1 && (
+                                  <span className="inline-flex items-center justify-center rounded-full bg-primary-700 text-white text-xs font-medium leading-[1em] min-w-[1em] px-1">
+                                    {chordObj.position}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                             <div className="flex flex-col items-end text-gray-600 text-sm font-normal flex-shrink-0">
                               <span>{formatFretsForDisplay(chordFrets, chordObj.baseFret)}</span>
