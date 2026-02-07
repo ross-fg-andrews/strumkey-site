@@ -172,10 +172,11 @@ export function renderAboveChords(lyrics, chords = []) {
     const trimmedLine = line.substring(leadingSpacesCount);
     
     // Adjust chord positions by subtracting leading spaces
-    const adjustedChords = lineChords.map(({ position, chord, id }) => ({
+    const adjustedChords = lineChords.map(({ position, chord, id, chordPosition }) => ({
       position: Math.max(0, position - leadingSpacesCount),
       chord,
       id,
+      chordPosition: chordPosition ?? 1,
     })).filter(({ position }) => position >= 0); // Remove chords that were in leading spaces
 
     if (adjustedChords.length === 0) {
@@ -231,12 +232,12 @@ export function renderAboveChords(lyrics, chords = []) {
     
     // Adjust chord positions based on space collapsing
     // The position mapping should already correctly map positions to the collapsed line
-    const adjustedChordsForCollapsed = adjustedChords.map(({ position, chord, id }) => {
+    const adjustedChordsForCollapsed = adjustedChords.map(({ position, chord, id, chordPosition }) => {
       // Map the position from the original trimmed line to the collapsed line
       const newPosition = positionMap.get(position);
       // If position wasn't in map (shouldn't happen, but be safe), use the original position
       const mappedPosition = newPosition !== undefined ? newPosition : position;
-      return { position: mappedPosition, chord, id };
+      return { position: mappedPosition, chord, id, chordPosition };
     });
 
     // Use the positions directly after space collapsing - they should already be correct
@@ -257,22 +258,25 @@ export function renderAboveChords(lyrics, chords = []) {
     );
     const chordLineArray = new Array(maxLength).fill(' ');
     
-    finalAdjustedChords.forEach(({ position, chord }) => {
+    finalAdjustedChords.forEach(({ position, chord, chordPosition: _ }) => {
       // Validate position and chord
       if (position === undefined || position === null || isNaN(position) || !chord || chord.length === 0) {
         return;
       }
-      
+      // Trim so chord names with trailing/leading spaces don't create extra space inside the pill
+      const chordTrimmed = (chord || '').trim();
+      if (chordTrimmed.length === 0) return;
+
       // The position represents where the chord marker was in the cleaned string
       // In standard chord notation, chords appear above the character that follows the insertion point
       // So we place the chord starting at the stored position
       const startPos = Math.max(0, position);
-      
+
       // Place each character of the chord at the correct position
-      for (let i = 0; i < chord.length; i++) {
+      for (let i = 0; i < chordTrimmed.length; i++) {
         const charPos = startPos + i;
         if (charPos < chordLineArray.length) {
-          chordLineArray[charPos] = chord[i];
+          chordLineArray[charPos] = chordTrimmed[i];
         }
       }
     });
@@ -308,18 +312,25 @@ export function renderAboveChords(lyrics, chords = []) {
           if (currentSegment) {
             chordSegments.push(currentSegment);
           }
-          // Check if this chord is within a word by checking the character at startPos in the lyric line
+          // Check if this chord is within a word vs at start of word (after space)
           const charAtPos = i < lyricLinePadded.length ? lyricLinePadded[i] : ' ';
           const charCode = i < lyricLinePadded.length ? lyricLinePadded.charCodeAt(i) : 32;
-          const isWhitespace = charCode === 32 || charCode === 9 || charCode === 160 || 
+          const isWhitespace = charCode === 32 || charCode === 9 || charCode === 160 ||
                               (charCode >= 8192 && charCode <= 8202);
           const isWithinWord = !isWhitespace;
-          
-          currentSegment = { 
-            type: 'chord', 
-            content: char, 
+          const prevCharCode = i > 0 && lyricLinePadded.length > 0 ? lyricLinePadded.charCodeAt(i - 1) : 32;
+          const prevIsWhitespace = prevCharCode === 32 || prevCharCode === 9 || prevCharCode === 160 ||
+                                  (prevCharCode >= 8192 && prevCharCode <= 8202);
+          const isStartOfWord = !isWhitespace && (i === 0 || prevIsWhitespace);
+          const chordAtPos = finalAdjustedChords.find((c) => c.position === i);
+
+          currentSegment = {
+            type: 'chord',
+            content: char,
             startPos: i,
-            isWithinWord: isWithinWord 
+            isWithinWord: isWithinWord,
+            isStartOfWord: isStartOfWord,
+            chordPosition: chordAtPos?.chordPosition ?? 1,
           };
         }
       }

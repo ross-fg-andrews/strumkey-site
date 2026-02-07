@@ -1194,44 +1194,52 @@ export default function SongSheet() {
                           if (segment.type === 'space') {
                             return <span key={idx}>{segment.content}</span>;
                           } else {
-                            // Parse chord format: "C:2:abc123" or "C::abc123" or "C:2" or "C"
-                            let chordName = segment.content;
-                            let chordPosition = 1;
-                            
-                            // Try to match format with ID: "C:2:abc123" or "C::abc123"
-                            const idMatch = segment.content.match(/^(.+?):(\d*):(.+)$/);
+                            // Parse chord name from segment content (segment.content is chord name only in chords-above)
+                            const segmentContent = (segment.content || '').trim();
+                            let chordName = segmentContent;
+                            let chordPosition = segment.chordPosition ?? 1;
+
+                            const idMatch = segmentContent.match(/^(.+?):(\d*):(.+)$/);
                             if (idMatch) {
                               chordName = idMatch[1].trim();
                               const positionStr = idMatch[2];
-                              chordPosition = positionStr ? parseInt(positionStr, 10) || 1 : 1;
+                              if (positionStr) chordPosition = parseInt(positionStr, 10) || 1;
                             } else {
-                              // Try to match format without ID: "C:2" or "C"
-                              const positionMatch = segment.content.match(/^(.+):(\d+)$/);
+                              const positionMatch = segmentContent.match(/^(.+):(\d+)$/);
                               if (positionMatch) {
                                 chordName = positionMatch[1].trim();
                                 chordPosition = parseInt(positionMatch[2], 10) || 1;
                               }
                             }
-                            
+
+                            // Chord row must match lyric row character-for-character so alignment is consistent.
+                            // Outer span reserves Nch for grid; inner pill sizes to content + padding (badge may extend slightly).
+                            const chWidth = segmentContent.length;
                             return (
                               <span
                                 key={idx}
-                                className="inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-base font-medium -mx-2"
-                                style={segment.isWithinWord ? { transform: 'translateX(-2px)' } : undefined}
+                                className="inline-block align-top"
+                                style={{
+                                  width: `${chWidth}ch`,
+                                  minWidth: `${chWidth}ch`,
+                                  transform: 'translateX(-0.25rem)',
+                                }}
                               >
-                                <span>{formatChordNameForDisplay(chordName)}</span>
-                                {chordPosition > 1 && (
-                                  <span className="inline-flex items-center justify-center rounded-full bg-primary-700 text-white text-xs font-medium leading-[1em] min-w-[1em] px-1">
-                                    {chordPosition}
-                                  </span>
-                                )}
+                                <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium">
+                                  <span>{formatChordNameForDisplay(chordName)}</span>
+                                  {chordPosition > 1 && (
+                                    <span className="inline-flex items-center justify-center rounded-full bg-primary-700 text-white text-xs font-medium leading-[1em] min-w-[1em] px-1">
+                                      {chordPosition}
+                                    </span>
+                                  )}
+                                </span>
                               </span>
                             );
                           }
                         })}
                       </p>
                     )}
-                    <p className="text-base whitespace-pre">{lyricLine === '' ? '\u00A0' : lyricLine}</p>
+                    <p className="text-base whitespace-pre font-mono">{lyricLine === '' ? '\u00A0' : lyricLine}</p>
                   </div>
                 );
               })}
