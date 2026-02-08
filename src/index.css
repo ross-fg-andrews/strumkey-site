@@ -63,6 +63,7 @@
   .chords-above-view .line {
     position: relative;
     line-height: 4;
+    font-size: 18px;
   }
 
   /* Blank lines between paragraphs use smaller line-height */
@@ -81,6 +82,23 @@
     left: 0;
     margin-bottom: 4px;
     white-space: nowrap;
+  }
+
+  /* Chords-inline view: tighter line height for normal lines */
+  .chords-inline-view .line {
+    position: relative;
+    line-height: 2;
+    font-size: 18px;
+  }
+
+  .chords-inline-view .line.line-blank {
+    line-height: 1;
+  }
+
+  /* Shift chord labels up 2px so 14px type sits centred against 18px lyrics */
+  .chords-inline-view .chord-label {
+    position: relative;
+    top: -2px;
   }
 }
 
