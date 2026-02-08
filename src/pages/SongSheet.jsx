@@ -1,7 +1,7 @@
 import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useSong, useSongInSongbooks, useAccessibleSongs, useMyGroups, useAllDatabaseChords } from '../db/queries';
 import { db } from '../db/schema';
-import { renderInlineChords, renderAboveChords, parseLyricsWithChords, lyricsWithChordsToText, extractElements } from '../utils/lyrics-helpers';
+import { renderInlineChords, renderChordsWithAnchors, parseChordMarker, parseLyricsWithChords, lyricsWithChordsToText, extractElements } from '../utils/lyrics-helpers';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useRegisterSongActions } from '../contexts/SongActionsContext';
@@ -70,7 +70,6 @@ export default function SongSheet() {
   const [chordsPanelVisible, setChordsPanelVisible] = useState(true);
   const [titleScrolledOut, setTitleScrolledOut] = useState(false);
   const [chordDiagramsSticky, setChordDiagramsSticky] = useState(false);
-
   const [editViewportHeight, setEditViewportHeight] = useState(
     typeof window !== 'undefined' && window.visualViewport
       ? window.visualViewport.height
@@ -312,7 +311,7 @@ export default function SongSheet() {
       return [];
     }
   }, [isEditing, lyricsText, song?.chords]);
-  
+
   // Extract unique chord name-position pairs from the song (must be before early returns)
   const uniqueChordPairs = useMemo(() => {
     if (!chords || chords.length === 0) return [];
@@ -838,7 +837,7 @@ export default function SongSheet() {
   const renderedLyrics = !isEditing
     ? (chordMode === 'inline'
         ? renderInlineChords(song.lyrics, chords)
-        : renderAboveChords(song.lyrics, chords))
+        : renderChordsWithAnchors(song.lyrics, chords))
     : [];
   
   // Parse elements for styling (only if we're not editing)
@@ -1176,25 +1175,7 @@ export default function SongSheet() {
                   <p key={i} className="text-base leading-relaxed">
                     {line === '' ? '\u00A0' : line.split(/\[([^\]]+)\]/).map((part, j) => {
                       if (j % 2 === 1) {
-                        // Parse chord format: "C:2:abc123" or "C::abc123" or "C:2" or "C"
-                        let chordName = part;
-                        let chordPosition = 1;
-                        
-                        // Try to match format with ID: "C:2:abc123" or "C::abc123"
-                        const idMatch = part.match(/^(.+?):(\d*):(.+)$/);
-                        if (idMatch) {
-                          chordName = idMatch[1].trim();
-                          const positionStr = idMatch[2];
-                          chordPosition = positionStr ? parseInt(positionStr, 10) || 1 : 1;
-                        } else {
-                          // Try to match format without ID: "C:2" or "C"
-                          const positionMatch = part.match(/^(.+):(\d+)$/);
-                          if (positionMatch) {
-                            chordName = positionMatch[1].trim();
-                            chordPosition = parseInt(positionMatch[2], 10) || 1;
-                          }
-                        }
-                        
+                        const { chordName, chordPosition } = parseChordMarker(part);
                         return (
                           <span key={j} className="inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium">
                             <span>{formatChordNameForDisplay(chordName)}</span>
@@ -1213,9 +1194,8 @@ export default function SongSheet() {
               })}
             </div>
           ) : (
-            <div className="space-y-2 font-mono">
+            <div className="chords-above-view">
               {renderedLyrics.map((lineData, i) => {
-                // Handle headings and instructions
                 if (lineData.type === 'heading') {
                   return (
                     <p key={i} className="text-lg font-bold text-gray-800 mt-4 mb-2 first:mt-0">
@@ -1223,7 +1203,6 @@ export default function SongSheet() {
                     </p>
                   );
                 }
-                
                 if (lineData.type === 'instruction') {
                   return (
                     <p key={i} className="text-sm italic text-gray-600 my-2 border-l-2 border-gray-300 pl-3">
@@ -1231,63 +1210,28 @@ export default function SongSheet() {
                     </p>
                   );
                 }
-                
-                // Regular line with chords
-                const { chordSegments, lyricLine } = lineData;
+                const { segments, lyricLine } = lineData;
+                const isBlankLine = segments.length === 1 && segments[0].type === 'text' && !segments[0].content.trim();
                 return (
-                  <div key={i} className="leading-relaxed">
-                    {chordSegments && chordSegments.length > 0 && (
-                      <p className="mb-1 whitespace-pre text-base font-mono">
-                        {chordSegments.map((segment, idx) => {
-                          if (segment.type === 'space') {
-                            return <span key={idx}>{segment.content}</span>;
-                          } else {
-                            // Parse chord name from segment content (segment.content is chord name only in chords-above)
-                            const segmentContent = (segment.content || '').trim();
-                            let chordName = segmentContent;
-                            let chordPosition = segment.chordPosition ?? 1;
-
-                            const idMatch = segmentContent.match(/^(.+?):(\d*):(.+)$/);
-                            if (idMatch) {
-                              chordName = idMatch[1].trim();
-                              const positionStr = idMatch[2];
-                              if (positionStr) chordPosition = parseInt(positionStr, 10) || 1;
-                            } else {
-                              const positionMatch = segmentContent.match(/^(.+):(\d+)$/);
-                              if (positionMatch) {
-                                chordName = positionMatch[1].trim();
-                                chordPosition = parseInt(positionMatch[2], 10) || 1;
-                              }
-                            }
-
-                            // Chord row must match lyric row character-for-character so alignment is consistent.
-                            // Outer span reserves Nch for grid; inner pill sizes to content + padding (badge may extend slightly).
-                            const chWidth = segmentContent.length;
-                            return (
-                              <span
-                                key={idx}
-                                className="inline-block align-top"
-                                style={{
-                                  width: `${chWidth}ch`,
-                                  minWidth: `${chWidth}ch`,
-                                  transform: 'translateX(-0.25rem)',
-                                }}
-                              >
-                                <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium">
-                                  <span>{formatChordNameForDisplay(chordName)}</span>
-                                  {chordPosition > 1 && (
-                                    <span className="inline-flex items-center justify-center rounded-full bg-primary-700 text-white text-xs font-medium leading-[1em] min-w-[1em] px-1">
-                                      {chordPosition}
-                                    </span>
-                                  )}
-                                </span>
+                  <div key={i} className={`line${isBlankLine ? ' line-blank' : ''}`}>
+                    {segments.map((seg, idx) => {
+                      if (seg.type === 'text') {
+                        return <span key={idx}>{seg.content === '' ? '\u00A0' : seg.content}</span>;
+                      }
+                      const { name, chordPosition } = seg;
+                      return (
+                        <span key={idx} className="chord-anchor">
+                          <span className="chord inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium">
+                            <span>{formatChordNameForDisplay(name)}</span>
+                            {chordPosition > 1 && (
+                              <span className="inline-flex items-center justify-center rounded-full bg-primary-700 text-white text-xs font-medium leading-[1em] min-w-[1em] px-1">
+                                {chordPosition}
                               </span>
-                            );
-                          }
-                        })}
-                      </p>
-                    )}
-                    <p className="text-base whitespace-pre font-mono">{lyricLine === '' ? '\u00A0' : lyricLine}</p>
+                            )}
+                          </span>
+                        </span>
+                      );
+                    })}
                   </div>
                 );
               })}

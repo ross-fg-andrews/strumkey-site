@@ -72,6 +72,176 @@ export function parseLyricsWithChords(text) {
 }
 
 /**
+ * Parse a chord marker string (content inside [ ]) to extract name, position, and optional id.
+ * Handles: "C", "C:2", "C:2:abc123", "C::abc123"
+ * @param {string} markerString - e.g. "C", "C:2", "C:2:abc123"
+ * @returns {{ chordName: string, chordPosition: number, chordId?: string | null }}
+ */
+export function parseChordMarker(markerString) {
+  const trimmed = (markerString || '').trim();
+  let chordName = trimmed;
+  let chordPosition = 1;
+  let chordId = null;
+  const idMatch = trimmed.match(/^(.+?):(\d*):(.+)$/);
+  if (idMatch) {
+    chordName = idMatch[1].trim();
+    const positionStr = idMatch[2];
+    chordPosition = positionStr ? parseInt(positionStr, 10) || 1 : 1;
+    chordId = idMatch[3].trim();
+  } else {
+    const positionMatch = trimmed.match(/^(.+):(\d+)$/);
+    if (positionMatch) {
+      chordName = positionMatch[1].trim();
+      chordPosition = parseInt(positionMatch[2], 10) || 1;
+    }
+  }
+  return { chordName, chordPosition, chordId };
+}
+
+/**
+ * Build segments for one line: trim leading spaces, collapse space runs, then interleave
+ * text and chord segments at chord positions. Used by renderChordsWithAnchors and renderAboveChords.
+ * @returns {{ segments: Array<{ type: 'text', content: string } | { type: 'chord', name: string, chordPosition: number, id?: string | null }>, lyricLine: string }}
+ */
+function buildLineSegments(line, lineChords) {
+  const sortedChords = [...lineChords].sort((a, b) => a.position - b.position);
+
+  if (sortedChords.length === 0) {
+    const trimmedLine = line.replace(/^\s+/, '');
+    return {
+      segments: [{ type: 'text', content: trimmedLine }],
+      lyricLine: trimmedLine,
+    };
+  }
+
+  const leadingSpacesMatch = line.match(/^\s+/);
+  const leadingSpacesCount = leadingSpacesMatch ? leadingSpacesMatch[0].length : 0;
+  const trimmedLine = line.substring(leadingSpacesCount);
+
+  const adjustedChords = sortedChords
+    .map(({ position, chord, id, chordPosition }) => ({
+      position: Math.max(0, position - leadingSpacesCount),
+      chord: (chord || '').trim(),
+      id,
+      chordPosition: chordPosition ?? 1,
+    }))
+    .filter(({ position }) => position >= 0)
+    .filter(({ chord }) => chord.length > 0);
+
+  if (adjustedChords.length === 0) {
+    const trimmed = trimmedLine.replace(/^\s+/, '');
+    return { segments: [{ type: 'text', content: trimmed }], lyricLine: trimmed };
+  }
+
+  // Collapse consecutive spaces and build position map
+  let collapsedLyricLine = '';
+  const positionMap = new Map();
+  let newPos = 0;
+  let inSpaceRun = false;
+  let spaceRunNewPos = -1;
+
+  for (let oldPos = 0; oldPos < trimmedLine.length; oldPos++) {
+    const charCode = trimmedLine.charCodeAt(oldPos);
+    const isSpace = trimmedLine[oldPos] === ' ' || trimmedLine[oldPos] === '\t' ||
+      charCode === 160 || (charCode >= 8192 && charCode <= 8202);
+
+    if (isSpace) {
+      if (!inSpaceRun) {
+        collapsedLyricLine += ' ';
+        spaceRunNewPos = newPos;
+        positionMap.set(oldPos, newPos);
+        newPos++;
+        inSpaceRun = true;
+      } else {
+        positionMap.set(oldPos, spaceRunNewPos);
+      }
+    } else {
+      if (inSpaceRun) inSpaceRun = false;
+      collapsedLyricLine += trimmedLine[oldPos];
+      positionMap.set(oldPos, newPos);
+      newPos++;
+    }
+  }
+
+  const mappedChords = adjustedChords.map(({ position, chord, id, chordPosition }) => {
+    const mappedPosition = positionMap.get(position);
+    return {
+      position: mappedPosition !== undefined ? mappedPosition : position,
+      chord,
+      id,
+      chordPosition,
+    };
+  });
+
+  // Build segments: interleave text and chord at positions
+  const segments = [];
+  let lastEnd = 0;
+
+  mappedChords.forEach(({ position, chord, id, chordPosition }) => {
+    if (position > lastEnd) {
+      segments.push({ type: 'text', content: collapsedLyricLine.slice(lastEnd, position) });
+    }
+    segments.push({ type: 'chord', name: chord, chordPosition, id: id ?? null });
+    lastEnd = position;
+  });
+
+  if (lastEnd < collapsedLyricLine.length) {
+    segments.push({ type: 'text', content: collapsedLyricLine.slice(lastEnd) });
+  }
+
+  return { segments, lyricLine: collapsedLyricLine };
+}
+
+/**
+ * Render lyrics with chords above using anchor-based segments (for web).
+ * Returns an array of line objects: { type: 'heading'|'instruction'|'line', text?, segments?, lyricLine? }.
+ */
+export function renderChordsWithAnchors(lyrics, chords = []) {
+  const lines = lyrics.split('\n');
+
+  return lines.map((line, lineIndex) => {
+    const headingMatch = line.match(/\{heading:([^}]+)\}/);
+    if (headingMatch) {
+      return { type: 'heading', text: headingMatch[1].trim(), segments: [], lyricLine: '' };
+    }
+    const instructionMatch = line.match(/\{instruction:([^}]+)\}/);
+    if (instructionMatch) {
+      return { type: 'instruction', text: instructionMatch[1].trim(), segments: [], lyricLine: '' };
+    }
+
+    const lineChords = chords.filter((c) => c.lineIndex === lineIndex);
+    const { segments, lyricLine } = buildLineSegments(line, lineChords);
+    return { type: 'line', segments, lyricLine };
+  });
+}
+
+/**
+ * Convert segments from buildLineSegments to legacy chordSegments + lyricLine for PDF.
+ */
+function segmentsToChordSegmentsAndLyricLine(segments, lyricLine) {
+  const chordSegments = [];
+  let lyricChars = 0;
+  let chordChars = 0;
+
+  segments.forEach((seg) => {
+    if (seg.type === 'text') {
+      if (seg.content.length > 0) {
+        chordSegments.push({ type: 'space', content: ' '.repeat(seg.content.length) });
+      }
+      lyricChars += seg.content.length;
+      chordChars += seg.content.length;
+    } else {
+      chordSegments.push({ type: 'chord', content: seg.name, chordPosition: seg.chordPosition });
+      chordChars += (seg.name || '').length;
+    }
+  });
+
+  const maxLength = Math.max(lyricChars, chordChars);
+  const lyricLinePadded = lyricLine.padEnd(maxLength, ' ');
+  return { chordSegments, lyricLine: lyricLinePadded };
+}
+
+/**
  * Render lyrics with chords in inline mode
  * Also handles headings and instructions by preserving their markers
  */
@@ -126,225 +296,26 @@ export function renderInlineChords(lyrics, chords = []) {
 }
 
 /**
- * Render lyrics with chords above
- * Also handles headings and instructions by preserving their markers
+ * Render lyrics with chords above (legacy shape for PDF).
+ * Uses the same segment builder as renderChordsWithAnchors; converts to chordSegments + lyricLine.
  */
 export function renderAboveChords(lyrics, chords = []) {
   const lines = lyrics.split('\n');
-  
+
   return lines.map((line, lineIndex) => {
-    // Check if this line contains a heading or instruction marker
-    // If so, return it as a special element
     const headingMatch = line.match(/\{heading:([^}]+)\}/);
     if (headingMatch) {
-      return { 
-        type: 'heading', 
-        text: headingMatch[1].trim(),
-        chordSegments: [], 
-        lyricLine: '' 
-      };
+      return { type: 'heading', text: headingMatch[1].trim(), chordSegments: [], lyricLine: '' };
     }
-    
     const instructionMatch = line.match(/\{instruction:([^}]+)\}/);
     if (instructionMatch) {
-      return { 
-        type: 'instruction', 
-        text: instructionMatch[1].trim(),
-        chordSegments: [], 
-        lyricLine: '' 
-      };
-    }
-    
-    const lineChords = chords.filter(c => c.lineIndex === lineIndex)
-      .sort((a, b) => a.position - b.position);
-
-    if (lineChords.length === 0) {
-      // Trim leading spaces from lines without chords
-      const trimmedLine = line.replace(/^\s+/, '');
-      return { chordSegments: [], lyricLine: trimmedLine };
+      return { type: 'instruction', text: instructionMatch[1].trim(), chordSegments: [], lyricLine: '' };
     }
 
-    // Find leading spaces to trim
-    const leadingSpacesMatch = line.match(/^\s+/);
-    const leadingSpacesCount = leadingSpacesMatch ? leadingSpacesMatch[0].length : 0;
-    
-    // Trim leading spaces from the line
-    const trimmedLine = line.substring(leadingSpacesCount);
-    
-    // Adjust chord positions by subtracting leading spaces
-    const adjustedChords = lineChords.map(({ position, chord, id, chordPosition }) => ({
-      position: Math.max(0, position - leadingSpacesCount),
-      chord,
-      id,
-      chordPosition: chordPosition ?? 1,
-    })).filter(({ position }) => position >= 0); // Remove chords that were in leading spaces
-
-    if (adjustedChords.length === 0) {
-      return { chordSegments: [], lyricLine: trimmedLine };
-    }
-
-    // Collapse multiple consecutive spaces to single spaces in the lyric line
-    // This fixes double spaces where chord markers were removed between words
-    // We need to adjust chord positions accordingly to maintain alignment
-    let collapsedLyricLine = '';
-    const positionMap = new Map(); // Maps old position to new position after space collapsing
-    let newPos = 0;
-    let inSpaceRun = false;
-    let spaceRunNewPos = -1; // Track the newPos of the first space in the run
-    
-    for (let oldPos = 0; oldPos < trimmedLine.length; oldPos++) {
-      const char = trimmedLine[oldPos];
-      const charCode = trimmedLine.charCodeAt(oldPos);
-      // Check for all types of whitespace: regular space, tab, non-breaking space, etc.
-      const isSpace = char === ' ' || char === '\t' || charCode === 160 || 
-                      (charCode >= 8192 && charCode <= 8202);
-      
-      if (isSpace) {
-        if (!inSpaceRun) {
-          // First space in a run - keep it and map position
-          collapsedLyricLine += ' ';
-          spaceRunNewPos = newPos;
-          positionMap.set(oldPos, newPos);
-          newPos++;
-          inSpaceRun = true;
-        } else {
-          // Subsequent space in a run - skip it (don't add to collapsedLyricLine), map to same position as first space
-          positionMap.set(oldPos, spaceRunNewPos);
-          // DO NOT increment newPos - we're skipping this space
-        }
-      } else {
-        // End of space run
-        if (inSpaceRun) {
-          inSpaceRun = false;
-          spaceRunNewPos = -1;
-        }
-        collapsedLyricLine += char;
-        positionMap.set(oldPos, newPos);
-        newPos++;
-      }
-    }
-    
-    // Handle case where line ends with spaces - make sure we reset the space run flag
-    if (inSpaceRun) {
-      inSpaceRun = false;
-      spaceRunNewPos = -1;
-    }
-    
-    // Adjust chord positions based on space collapsing
-    // The position mapping should already correctly map positions to the collapsed line
-    const adjustedChordsForCollapsed = adjustedChords.map(({ position, chord, id, chordPosition }) => {
-      // Map the position from the original trimmed line to the collapsed line
-      const newPosition = positionMap.get(position);
-      // If position wasn't in map (shouldn't happen, but be safe), use the original position
-      const mappedPosition = newPosition !== undefined ? newPosition : position;
-      return { position: mappedPosition, chord, id, chordPosition };
-    });
-
-    // Use the positions directly after space collapsing - they should already be correct
-    // The position represents where the chord marker was, which after space collapsing
-    // correctly points to either:
-    // - A space (for chords between words) - chord appears above the space
-    // - A character (for chords within words) - chord appears above/at that character position
-    const finalAdjustedChords = adjustedChordsForCollapsed;
-
-    // Build the chord line by placing each chord at its exact position
-    // The position represents where the chord was inserted in the lyrics
-    // We want to place the chord starting at that position (above the character at that index)
-    const lineLength = collapsedLyricLine.length;
-    // Make sure we have enough space for chords that might extend beyond the line
-    const maxLength = Math.max(
-      lineLength,
-      ...finalAdjustedChords.map(({ position, chord }) => (position || 0) + (chord?.length || 0))
-    );
-    const chordLineArray = new Array(maxLength).fill(' ');
-    
-    finalAdjustedChords.forEach(({ position, chord, chordPosition: _ }) => {
-      // Validate position and chord
-      if (position === undefined || position === null || isNaN(position) || !chord || chord.length === 0) {
-        return;
-      }
-      // Trim so chord names with trailing/leading spaces don't create extra space inside the pill
-      const chordTrimmed = (chord || '').trim();
-      if (chordTrimmed.length === 0) return;
-
-      // The position represents where the chord marker was in the cleaned string
-      // In standard chord notation, chords appear above the character that follows the insertion point
-      // So we place the chord starting at the stored position
-      const startPos = Math.max(0, position);
-
-      // Place each character of the chord at the correct position
-      for (let i = 0; i < chordTrimmed.length; i++) {
-        const charPos = startPos + i;
-        if (charPos < chordLineArray.length) {
-          chordLineArray[charPos] = chordTrimmed[i];
-        }
-      }
-    });
-
-    // Ensure both lines are the same length for proper alignment
-    const lyricLinePadded = collapsedLyricLine.padEnd(maxLength, ' ');
-    
-    // Convert chord line array into structured segments
-    const chordSegments = [];
-    let currentSegment = null;
-    
-    for (let i = 0; i < chordLineArray.length; i++) {
-      const char = chordLineArray[i];
-      if (char === ' ') {
-        // Space character
-        if (currentSegment && currentSegment.type === 'space') {
-          // Extend existing space segment
-          currentSegment.content += ' ';
-        } else {
-          // Start new space segment
-          if (currentSegment) {
-            chordSegments.push(currentSegment);
-          }
-          currentSegment = { type: 'space', content: ' ', startPos: i };
-        }
-      } else {
-        // Chord character
-        if (currentSegment && currentSegment.type === 'chord') {
-          // Extend existing chord segment
-          currentSegment.content += char;
-        } else {
-          // Start new chord segment
-          if (currentSegment) {
-            chordSegments.push(currentSegment);
-          }
-          // Check if this chord is within a word vs at start of word (after space)
-          const charAtPos = i < lyricLinePadded.length ? lyricLinePadded[i] : ' ';
-          const charCode = i < lyricLinePadded.length ? lyricLinePadded.charCodeAt(i) : 32;
-          const isWhitespace = charCode === 32 || charCode === 9 || charCode === 160 ||
-                              (charCode >= 8192 && charCode <= 8202);
-          const isWithinWord = !isWhitespace;
-          const prevCharCode = i > 0 && lyricLinePadded.length > 0 ? lyricLinePadded.charCodeAt(i - 1) : 32;
-          const prevIsWhitespace = prevCharCode === 32 || prevCharCode === 9 || prevCharCode === 160 ||
-                                  (prevCharCode >= 8192 && prevCharCode <= 8202);
-          const isStartOfWord = !isWhitespace && (i === 0 || prevIsWhitespace);
-          const chordAtPos = finalAdjustedChords.find((c) => c.position === i);
-
-          currentSegment = {
-            type: 'chord',
-            content: char,
-            startPos: i,
-            isWithinWord: isWithinWord,
-            isStartOfWord: isStartOfWord,
-            chordPosition: chordAtPos?.chordPosition ?? 1,
-          };
-        }
-      }
-    }
-    
-    // Push the last segment
-    if (currentSegment) {
-      chordSegments.push(currentSegment);
-    }
-
-    return {
-      chordSegments,
-      lyricLine: lyricLinePadded,
-    };
+    const lineChords = chords.filter((c) => c.lineIndex === lineIndex);
+    const { segments, lyricLine } = buildLineSegments(line, lineChords);
+    const { chordSegments, lyricLine: lyricLinePadded } = segmentsToChordSegmentsAndLyricLine(segments, lyricLine);
+    return { chordSegments, lyricLine: lyricLinePadded };
   });
 }
 
