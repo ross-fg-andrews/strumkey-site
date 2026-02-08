@@ -812,7 +812,7 @@ export default function SongSheet() {
               onChange={(e) => setLyricsText(e.target.value)}
               placeholder=""
               rows={30}
-              className="w-full p-0 border-none outline-none focus:outline-none bg-transparent text-base leading-relaxed resize-none placeholder:text-gray-400"
+              className="w-full p-0 border-none outline-none focus:outline-none bg-transparent text-lg leading-[2] resize-none placeholder:text-gray-400"
               instrument={instrument}
               tuning={tuning}
               userId={user?.id}
@@ -1141,7 +1141,7 @@ export default function SongSheet() {
                 onChange={(e) => setLyricsText(e.target.value)}
                 placeholder=""
                 rows={30}
-                className="w-full p-0 border-none outline-none focus:outline-none bg-transparent text-base leading-relaxed resize-none font-mono"
+                className="w-full p-0 border-none outline-none focus:outline-none bg-transparent text-lg leading-[2] resize-none"
                 instrument={instrument}
                 tuning={tuning}
                 userId={user?.id}

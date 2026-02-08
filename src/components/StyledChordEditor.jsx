@@ -768,7 +768,7 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
       if (headingMatch) {
         const headingText = headingMatch[1].trim();
         const p = document.createElement('p');
-        p.className = 'text-lg font-bold text-gray-800 mt-4 mb-0 first:mt-0';
+        p.className = 'text-lg font-bold text-gray-800 mt-4 mb-2 first:mt-0';
         p.setAttribute('data-heading', 'true');
         p.setAttribute('data-heading-text', headingText);
         p.setAttribute('contenteditable', 'true');
@@ -784,7 +784,7 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
       if (instructionMatch) {
         const instructionText = instructionMatch[1].trim();
         const p = document.createElement('p');
-        p.className = 'text-sm italic text-gray-600 mt-2 mb-0 border-l-2 border-gray-300 pl-3';
+        p.className = 'text-sm italic text-gray-600 my-2 border-l-2 border-gray-300 pl-3';
         p.setAttribute('data-instruction', 'true');
         p.setAttribute('data-instruction-text', instructionText);
         p.setAttribute('contenteditable', 'true');
@@ -827,7 +827,7 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
           }
           
           const span = document.createElement('span');
-          span.className = 'inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium';
+          span.className = 'chord-label inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium';
           span.setAttribute('data-chord', 'true');
           span.setAttribute('data-chord-name', chordName); // Store original chord name for reconstruction
           if (chordId) {
@@ -1477,7 +1477,7 @@ const StyledChordEditor = forwardRef(function StyledChordEditor({
         contentEditable
         onInput={handleInput}
         onKeyDown={handleKeyDown}
-        className={className}
+        className={`chords-inline-view ${className}`.trim()}
         data-placeholder={placeholder}
         style={{
           minHeight: `${(rows || 20) * 1.5}rem`,
