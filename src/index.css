@@ -87,7 +87,7 @@
   /* Chords-inline view: tighter line height for normal lines */
   .chords-inline-view .line {
     position: relative;
-    line-height: 2;
+    line-height: 1.5;
     font-size: 18px;
   }
 
