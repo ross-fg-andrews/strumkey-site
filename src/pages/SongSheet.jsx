@@ -812,7 +812,7 @@ export default function SongSheet() {
               onChange={(e) => setLyricsText(e.target.value)}
               placeholder=""
               rows={30}
-              className="w-full p-0 border-none outline-none focus:outline-none bg-transparent text-base leading-relaxed resize-none placeholder:text-gray-400"
+              className="w-full p-0 border-none outline-none focus:outline-none bg-transparent text-lg leading-[2] resize-none placeholder:text-gray-400"
               instrument={instrument}
               tuning={tuning}
               userId={user?.id}
@@ -1141,14 +1141,14 @@ export default function SongSheet() {
                 onChange={(e) => setLyricsText(e.target.value)}
                 placeholder=""
                 rows={30}
-                className="w-full p-0 border-none outline-none focus:outline-none bg-transparent text-base leading-relaxed resize-none font-mono"
+                className="w-full p-0 border-none outline-none focus:outline-none bg-transparent text-lg leading-[2] resize-none"
                 instrument={instrument}
                 tuning={tuning}
                 userId={user?.id}
               />
             </>
           ) : chordMode === 'inline' ? (
-            <div className="space-y-2 font-mono">
+            <div className="chords-inline-view space-y-2">
               {renderedLyrics.map((line, i) => {
                 // Check if this line is a heading
                 const headingMatch = line.match(/\{heading:([^}]+)\}/);
@@ -1170,14 +1170,15 @@ export default function SongSheet() {
                   );
                 }
                 
-                // Regular lyric line
+                // Regular lyric line (blank = empty or only chord markers)
+                const isBlank = line === '' || line.replace(/\[[^\]]+\]/g, '').trim() === '';
                 return (
-                  <p key={i} className="text-base leading-relaxed">
+                  <p key={i} className={`line${isBlank ? ' line-blank' : ''}`}>
                     {line === '' ? '\u00A0' : line.split(/\[([^\]]+)\]/).map((part, j) => {
                       if (j % 2 === 1) {
                         const { chordName, chordPosition } = parseChordMarker(part);
                         return (
-                          <span key={j} className="inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium">
+                          <span key={j} className="chord-label inline-flex items-center gap-1.5 px-2 py-1 bg-primary-100 text-primary-700 rounded text-sm font-medium">
                             <span>{formatChordNameForDisplay(chordName)}</span>
                             {chordPosition > 1 && (
                               <span className="inline-flex items-center justify-center rounded-full bg-primary-700 text-white text-xs font-medium leading-[1em] min-w-[1em] px-1">
