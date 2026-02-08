@@ -6,7 +6,7 @@ import {
   Text,
   StyleSheet,
 } from '@react-pdf/renderer';
-import { renderInlineChords, renderAboveChords } from '../utils/lyrics-helpers';
+import { renderInlineChords, renderAboveChords, parseChordMarker } from '../utils/lyrics-helpers';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
 import ChordDiagramPDF from './ChordDiagramPDF';
 
@@ -37,35 +37,6 @@ function getPageConfig(pageSize) {
 function getContentWidth(pageSize, margin) {
   const w = PAGE_WIDTHS[pageSize];
   return w != null ? w - 2 * margin : undefined;
-}
-
-/**
- * Parse chord name from segment content (handles C:2:id or C:2 or C)
- */
-function parseChordFromSegment(segmentContent) {
-  const trimmed = (segmentContent || '').trim();
-  let chordName = trimmed;
-  let chordPosition = 1;
-  const idMatch = trimmed.match(/^(.+?):(\d*):(.+)$/);
-  if (idMatch) {
-    chordName = idMatch[1].trim();
-    const positionStr = idMatch[2];
-    chordPosition = positionStr ? parseInt(positionStr, 10) || 1 : 1;
-  } else {
-    const positionMatch = trimmed.match(/^(.+):(\d+)$/);
-    if (positionMatch) {
-      chordName = positionMatch[1].trim();
-      chordPosition = parseInt(positionMatch[2], 10) || 1;
-    }
-  }
-  return { chordName, chordPosition };
-}
-
-/**
- * Parse chord from inline marker "[C:2:id]" or "[C]"
- */
-function parseChordFromInline(part) {
-  return parseChordFromSegment(part);
 }
 
 export default function SongPDFDocument({
@@ -228,7 +199,7 @@ export default function SongPDFDocument({
           <Text key={i} style={styles.line}>
             {parts.map((part, j) => {
               if (j % 2 === 1) {
-                const { chordName, chordPosition } = parseChordFromInline(part);
+                const { chordName, chordPosition } = parseChordMarker(part);
                 return (
                   <Text key={j} style={styles.chordInline}>
                     {formatChordNameForDisplay(chordName)}

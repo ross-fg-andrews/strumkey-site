@@ -58,5 +58,29 @@
   .table tbody tr {
     @apply hover:bg-gray-100 focus:bg-gray-100 transition-colors;
   }
+
+  /* Chords-above view: anchor-based layout, works with any font */
+  .chords-above-view .line {
+    position: relative;
+    line-height: 4;
+  }
+
+  /* Blank lines between paragraphs use smaller line-height */
+  .chords-above-view .line.line-blank {
+    line-height: 2;
+  }
+
+  .chords-above-view .chord-anchor {
+    position: relative;
+    display: inline;
+  }
+
+  .chords-above-view .chord {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: 4px;
+    white-space: nowrap;
+  }
 }
 
