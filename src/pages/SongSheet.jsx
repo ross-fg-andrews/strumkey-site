@@ -59,7 +59,6 @@ export default function SongSheet() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
-  const [songSelectorOpen, setSongSelectorOpen] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState(null);
@@ -95,7 +94,6 @@ export default function SongSheet() {
   }, [isEditing, location.pathname, setEditingSong]);
 
   const menuRef = useRef(null);
-  const songSelectorRef = useRef(null);
   const headerBlockRef = useRef(null);
   const chordDiagramsRef = useRef(null);
 
@@ -248,20 +246,6 @@ export default function SongSheet() {
       clearTimeout(timerId);
     };
   }, [isViewMode, song?.id, user?.id, isEditing, isCreateMode]);
-
-  // Close song selector when clicking outside (menu click-outside is handled in Navigation)
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (songSelectorRef.current && !songSelectorRef.current.contains(event.target)) {
-        setSongSelectorOpen(false);
-      }
-    }
-
-    if (songSelectorOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [songSelectorOpen]);
 
   // Close section dropdown when clicking outside or pressing Escape
   useEffect(() => {
@@ -428,13 +412,6 @@ export default function SongSheet() {
   const handleNextSong = () => {
     if (songbookNavigation?.nextSongId && songbookId) {
       navigate(`/songs/${songbookNavigation.nextSongId}?songbook=${songbookId}`);
-    }
-  };
-
-  const handleJumpToSong = (songId) => {
-    if (songId && songbookId) {
-      navigate(`/songs/${songId}?songbook=${songbookId}`);
-      setSongSelectorOpen(false);
     }
   };
 
@@ -1003,60 +980,7 @@ export default function SongSheet() {
             ) : (
               <>
                 <div className="flex items-center gap-2 mb-0.5">
-                  {isViewMode && songbookNavigation ? (
-                    <div className="relative" ref={songSelectorRef}>
-                      <button
-                        onClick={() => setSongSelectorOpen(!songSelectorOpen)}
-                        className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
-                        aria-label="Select song from songbook"
-                      >
-                        <h1 className="heading-alice">{song.title}</h1>
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className={`h-5 w-5 text-gray-600 transition-transform ${songSelectorOpen ? 'rotate-180' : ''}`}
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 9l-7 7-7-7"
-                          />
-                        </svg>
-                      </button>
-                      {songSelectorOpen && (
-                        <div className="absolute left-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-10 max-h-96 overflow-y-auto">
-                          <div className="py-1">
-                            {songbookNavigation.songs.map((songItem) => (
-                              <button
-                                key={songItem.id}
-                                onClick={() => handleJumpToSong(songItem.id)}
-                                className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors ${
-                                  songItem.id === id ? 'bg-primary-50 text-primary-700 font-medium' : ''
-                                }`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <span className="text-gray-500 font-mono text-xs w-6">
-                                    {songItem.position}.
-                                  </span>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="font-medium truncate">{songItem.title}</div>
-                                    {songItem.artist && (
-                                      <div className="text-xs text-gray-500 truncate">{songItem.artist}</div>
-                                    )}
-                                  </div>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <h1 className="heading-alice">{song.title}</h1>
-                  )}
+                  <h1 className="heading-alice">{song.title}</h1>
                 </div>
                 {song.artist && (
                   <div className="flex items-center gap-1">
