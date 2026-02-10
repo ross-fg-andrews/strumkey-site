@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useMySongs, useMySongbooks, useMyGroups } from '../db/queries';
-import { shareSongsWithGroups } from '../db/mutations';
+import { shareSongsWithGroups, deleteSong } from '../db/mutations';
 import { db } from '../db/schema';
 import { id } from '@instantdb/react';
 import { formatChordNameForDisplay } from '../utils/chord-formatting';
@@ -522,15 +522,27 @@ function DeleteSongsModal({ selectedSongIds, songs, onClose, onSuccess }) {
     setError(null);
 
     try {
-      // Create transactions for batch delete
-      const transactions = selectedSongs.map(song =>
-        db.tx.songs[song.id].delete()
-      );
-
-      await db.transact(...transactions);
-      onSuccess();
+      // Delete each song sequentially - iterate over Set to avoid issues with array updates
+      const songIdsToDelete = Array.from(selectedSongIds);
+      const errors = [];
+      
+      for (const songId of songIdsToDelete) {
+        try {
+          await deleteSong(songId);
+        } catch (err) {
+          errors.push({ songId, error: err });
+        }
+      }
+      
+      if (errors.length > 0) {
+        const errorMessage = `Failed to delete ${errors.length} of ${songIdsToDelete.length} song(s).`;
+        setError(errorMessage);
+        setDeleting(false);
+      } else {
+        onSuccess();
+      }
     } catch (err) {
-      console.error('Error deleting songs:', err);
+      console.error('Error in batch delete:', err);
       setError(err.message || 'Failed to delete songs. Please try again.');
       setDeleting(false);
     }
