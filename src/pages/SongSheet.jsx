@@ -580,7 +580,7 @@ export default function SongSheet() {
       },
       handleChordModeChange: (mode) => {
         setChordMode(mode);
-        setMenuOpen(false);
+        // Keep panel open - chord view switch doesn't navigate or open a modal
       },
       handleExportPdfClick: () => {
         setShowPDFExportModal(true);
