@@ -1,5 +1,6 @@
 import { FileArrowDown, Users, PencilSimple, Trash } from '@phosphor-icons/react';
 import { XIcon } from '../utils/icons';
+import AccessibleSelect from './AccessibleSelect';
 
 export default function SongOptionsPanel({ songActions, isOpen, onClose }) {
   if (!songActions) return null;
@@ -7,6 +8,8 @@ export default function SongOptionsPanel({ songActions, isOpen, onClose }) {
   const {
     chordMode,
     handleChordModeChange,
+    tuning,
+    handleTuningChange,
     handleExportPdfClick,
     handleShareClick,
     handleEditClick,
@@ -78,6 +81,20 @@ export default function SongOptionsPanel({ songActions, isOpen, onClose }) {
                     />
                     <span className="text-gray-900">Chords Above</span>
                   </label>
+                  <div className="mt-2">
+                    <label htmlFor="tuning-select" className="block text-sm font-medium text-gray-700 mb-1">
+                      Tuning
+                    </label>
+                    <AccessibleSelect
+                      id="tuning-select"
+                      value={tuning || 'ukulele_standard'}
+                      onChange={(v) => handleTuningChange?.(v)}
+                      options={[
+                        { value: 'ukulele_standard', label: 'Standard (GCEA)' },
+                        { value: 'ukulele_baritone', label: 'Baritone (DGBE)' },
+                      ]}
+                    />
+                  </div>
                 </div>
               </section>
             )}
