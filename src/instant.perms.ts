@@ -72,6 +72,14 @@ const rules = {
       delete: "auth.id == data.sharedBy || auth.id == data.group.createdBy",
     },
   },
+  songTuningPreferences: {
+    allow: {
+      view: "auth.id != null && data.userId == auth.id",
+      create: "auth.id != null && data.userId == auth.id",
+      update: "auth.id != null && data.userId == auth.id",
+      delete: "auth.id != null && data.userId == auth.id",
+    },
+  },
   groups: {
     allow: {
       view: "auth.id != null",

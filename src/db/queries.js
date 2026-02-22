@@ -562,6 +562,27 @@ export function useAllDatabaseChords(userId, instrument = 'ukulele', tuning = 'u
   };
 }
 
+// Get user's tuning preference for a song
+export function useSongTuningPreference(userId, songId) {
+  const { data, error } = db.useQuery({
+    songTuningPreferences: {
+      $: {
+        where: userId && songId
+          ? { userId, songId }
+          : { userId: '', songId: '' },
+      },
+    },
+  });
+
+  if (!userId || !songId) {
+    return { data: { preference: null }, error: null };
+  }
+
+  const prefs = data?.songTuningPreferences || [];
+  const preference = prefs.length > 0 ? prefs[0] : null;
+  return { data: { preference }, error };
+}
+
 // Get a single song by ID
 export function useSong(songId) {
   // Always call hooks unconditionally to satisfy React's rules of hooks

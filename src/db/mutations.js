@@ -875,6 +875,38 @@ export async function useInvite(inviteId, userId) {
 }
 
 /**
+ * Create or update a user's tuning preference for a song
+ * @param {string} userId - User ID
+ * @param {string} songId - Song ID
+ * @param {string} tuning - Tuning value ('ukulele_standard' | 'ukulele_baritone')
+ * @param {string|null} existingPreferenceId - If preference exists, its ID for update; otherwise create new
+ * @returns {Promise} Transaction promise
+ */
+export async function upsertSongTuningPreference(userId, songId, tuning, existingPreferenceId = null) {
+  if (!userId || !songId) {
+    throw new Error('userId and songId are required');
+  }
+
+  const now = Date.now();
+  if (existingPreferenceId) {
+    return db.transact(
+      db.tx.songTuningPreferences[existingPreferenceId].update({
+        tuning,
+        updatedAt: now,
+      })
+    );
+  }
+  return db.transact(
+    db.tx.songTuningPreferences[id()].update({
+      userId,
+      songId,
+      tuning,
+      updatedAt: now,
+    })
+  );
+}
+
+/**
  * Record a song play event
  * Records every play separately (full history, not just updating last played)
  * @param {string} songId - Song ID that was played

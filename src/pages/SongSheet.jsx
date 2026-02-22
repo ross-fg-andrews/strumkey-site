@@ -1,11 +1,11 @@
 import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { useSong, useSongInSongbooks, useAccessibleSongs, useMyGroups, useAllDatabaseChords } from '../db/queries';
+import { useSong, useSongInSongbooks, useAccessibleSongs, useMyGroups, useAllDatabaseChords, useSongTuningPreference } from '../db/queries';
 import { db } from '../db/schema';
 import { renderInlineChords, renderChordsWithAnchors, parseChordMarker, parseLyricsWithChords, lyricsWithChordsToText, extractElements } from '../utils/lyrics-helpers';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useRegisterSongActions } from '../contexts/SongActionsContext';
-import { deleteSong, createSong, updateSong, shareSongsWithGroups, recordSongPlay } from '../db/mutations';
+import { deleteSong, createSong, updateSong, shareSongsWithGroups, recordSongPlay, upsertSongTuningPreference } from '../db/mutations';
 import { AppError, ERROR_CODES } from '../utils/error-handling';
 import ChordAutocomplete from '../components/ChordAutocomplete';
 import StyledChordEditor from '../components/StyledChordEditor';
@@ -100,9 +100,9 @@ export default function SongSheet() {
   // Nav bar height (px) – must match Navigation h-14 for scroll/intersection logic
   const NAV_BAR_HEIGHT = 56;
 
-  // Instrument and tuning settings (can be made configurable later)
+  // Instrument and tuning settings (tuning is user-selectable, persisted per song)
   const instrument = 'ukulele';
-  const tuning = 'ukulele_standard';
+  const [tuning, setTuning] = useState('ukulele_standard');
 
   // Edit/create mode state - must be declared before conditional hooks
   const [title, setTitle] = useState('');
@@ -114,6 +114,8 @@ export default function SongSheet() {
   // Use id directly (will be undefined for /songs/new, which is handled by the hooks)
   const { data, error } = useSong(id);
   const song = data?.songs?.[0];
+  const { data: tuningPrefData } = useSongTuningPreference(user?.id ?? null, id ?? null);
+  const tuningPreference = tuningPrefData?.preference ?? null;
   const { data: songbookData } = useSongInSongbooks(id);
   const { data: groupsData } = useMyGroups(user?.id);
   
@@ -215,6 +217,19 @@ export default function SongSheet() {
       setLyricsText('');
     }
   }, [isEditing, isCreateMode, song]);
+
+  // Load tuning preference when song loads
+  useEffect(() => {
+    if (!id) {
+      setTuning('ukulele_standard'); // Create mode: always default
+      return;
+    }
+    if (tuningPreference?.tuning && tuningPreference?.songId === id) {
+      setTuning(tuningPreference.tuning);
+    } else {
+      setTuning('ukulele_standard');
+    }
+  }, [id, tuningPreference?.tuning, tuningPreference?.songId]);
 
   // Track song plays - record a play when user views a song for 60+ seconds
   useEffect(() => {
@@ -330,8 +345,8 @@ export default function SongSheet() {
     }
   }, [song?.embeddedChords]);
 
-  // Get database chords for lookup
-  const { data: dbChordsData } = useAllDatabaseChords(user?.id, instrument, tuning);
+  // Get database chords for lookup (always standard - baritone uses transpose in findChord)
+  const { data: dbChordsData } = useAllDatabaseChords(user?.id, instrument, 'ukulele_standard');
   const dbChords = dbChordsData?.chords || [];
 
   // Get chord diagrams data for unique chord-position pairs (must be before early returns)
@@ -360,7 +375,7 @@ export default function SongSheet() {
             frets: chordData.frets,
             baseFret: chordData.baseFret, // Pass baseFret if available
             instrument: chordData.instrument || instrument,
-            tuning: chordData.tuning || tuning,
+            tuning: tuning, // User's selected tuning (for string labels: GCEA vs DGBE)
           };
         }
         return null;
@@ -512,6 +527,15 @@ export default function SongSheet() {
     }
   };
 
+  const handleTuningChange = (newTuning) => {
+    setTuning(newTuning);
+    if (user?.id && id) {
+      upsertSongTuningPreference(user.id, id, newTuning, tuningPreference?.id).catch((err) => {
+        console.error('Error saving tuning preference:', err);
+      });
+    }
+  };
+
   const handleDelete = async () => {
     // Check if song is in songbooks
     if (inSongbooks) {
@@ -552,6 +576,8 @@ export default function SongSheet() {
       menuRef,
       chordMode,
       setChordMode,
+      tuning,
+      handleTuningChange,
       canEdit,
       isCreator,
       chordsPanelVisible,
@@ -580,14 +606,14 @@ export default function SongSheet() {
       },
       handleChordModeChange: (mode) => {
         setChordMode(mode);
-        setMenuOpen(false);
+        // Keep panel open - chord view switch doesn't navigate or open a modal
       },
       handleExportPdfClick: () => {
         setShowPDFExportModal(true);
         setMenuOpen(false);
       },
     };
-  }, [isViewMode, isEditing, menuOpen, chordMode, canEdit, isCreator, song, chordsPanelVisible, uniqueChordPairs, titleScrolledOut, setChordMode, setMenuOpen]);
+  }, [isViewMode, isEditing, menuOpen, chordMode, tuning, canEdit, isCreator, song, chordsPanelVisible, uniqueChordPairs, titleScrolledOut, setChordMode, setMenuOpen]);
 
   // Register/unregister song actions when value changes
   useEffect(() => {

@@ -116,6 +116,12 @@ const _schema = i.schema({
       userId: i.string().indexed(),
       playedAt: i.number().indexed(),
     }),
+    songTuningPreferences: i.entity({
+      userId: i.string().indexed(),
+      songId: i.string().indexed(),
+      tuning: i.string(),
+      updatedAt: i.number(),
+    }),
     users: i.entity({
       createdAt: i.number(),
       email: i.string().optional(),

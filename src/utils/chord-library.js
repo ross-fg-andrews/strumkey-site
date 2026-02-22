@@ -8,6 +8,29 @@ import { toDbName, isSharpRoot } from './enharmonic';
  */
 
 /**
+ * Transpose chord root up 5 semitones for baritone lookup.
+ * Baritone (DGBE) is 5 semitones below standard (GCEA), so baritone "C" uses standard "F" shape.
+ * Uses flats for DB compatibility (Bb, Db, Eb, Gb, Ab).
+ * @param {string} chordName - e.g. "C", "Am", "G7"
+ * @returns {string} Transposed chord name, e.g. "F", "Dm", "C7"
+ */
+function transposeChordNameForBaritone(chordName) {
+  if (!chordName || typeof chordName !== 'string') return chordName;
+  const match = chordName.match(/^([A-Ga-g][#b]?)(.*)$/);
+  if (!match) return chordName;
+  const root = match[1];
+  const suffix = match[2] || '';
+  const ROOT_UP_5 = {
+    'C': 'F', 'C#': 'F#', 'Db': 'Gb', 'D': 'G', 'D#': 'G#', 'Eb': 'Ab',
+    'E': 'A', 'F': 'Bb', 'F#': 'B', 'Gb': 'B', 'G': 'C', 'G#': 'C#', 'Ab': 'Db',
+    'A': 'D', 'A#': 'D#', 'Bb': 'Eb', 'B': 'E',
+  };
+  const transposedRoot = ROOT_UP_5[root];
+  if (!transposedRoot) return chordName;
+  return transposedRoot + suffix;
+}
+
+/**
  * Find a chord by name, instrument, and tuning
  * Checks multiple sources in order: embedded chords, personal library, main library
  * This prioritizes custom/user chords over standard library chords
@@ -35,9 +58,18 @@ export function findChord(
   
   const { databaseChords = [], embeddedChords = [] } = options;
   
-  // If chordId provided, use it directly (fastest, most reliable)
+  // For baritone: transpose chord name and look up standard fingering (library has standard only)
+  // Don't use chordId for baritone - we need the transposed shape, not the original
+  let lookupChordName = chordName;
+  let lookupTuning = tuning;
+  if (tuning === 'ukulele_baritone') {
+    lookupChordName = transposeChordNameForBaritone(chordName);
+    lookupTuning = 'ukulele_standard';
+  }
+  
+  // If chordId provided and not baritone, use it directly (fastest, most reliable)
   // Check embedded chords first (song-specific), then database
-  if (chordId) {
+  if (chordId && tuning !== 'ukulele_baritone') {
     const fromEmbedded = embeddedChords.find(c => c.id === chordId);
     if (fromEmbedded) return fromEmbedded;
     if (databaseChords.length > 0) {
@@ -60,18 +92,18 @@ export function findChord(
   // Embedded chords without a position field are treated as position 1.
   const positionMatches = (c) => (c.position == null || c.position === undefined) ? position === 1 : c.position === position;
   let chord = embeddedChords.find(c => 
-    c.name === chordName &&
+    c.name === lookupChordName &&
     c.instrument === instrument &&
-    c.tuning === tuning &&
+    c.tuning === lookupTuning &&
     positionMatches(c)
   );
   
   // Case-insensitive fallback for embedded chords (still match position)
   if (!chord) {
     chord = embeddedChords.find(c => 
-      c.name.toLowerCase() === chordName.toLowerCase() &&
+      c.name.toLowerCase() === lookupChordName.toLowerCase() &&
       c.instrument === instrument &&
-      c.tuning === tuning &&
+      c.tuning === lookupTuning &&
       positionMatches(c)
     );
   }
@@ -79,15 +111,15 @@ export function findChord(
   // If no exact position match in embedded and fallback allowed, use first matching chord by name
   if (!chord && embeddedChords.length > 0 && allowPositionFallback) {
     chord = embeddedChords.find(c => 
-      c.name === chordName &&
+      c.name === lookupChordName &&
       c.instrument === instrument &&
-      c.tuning === tuning
+      c.tuning === lookupTuning
     );
     if (!chord) {
       chord = embeddedChords.find(c => 
-        c.name.toLowerCase() === chordName.toLowerCase() &&
+        c.name.toLowerCase() === lookupChordName.toLowerCase() &&
         c.instrument === instrument &&
-        c.tuning === tuning
+        c.tuning === lookupTuning
       );
     }
   }
@@ -96,9 +128,9 @@ export function findChord(
   if (!chord && databaseChords.length > 0) {
     // Try to find chord with matching position
     chord = databaseChords.find(c => 
-      c.name === chordName &&
+      c.name === lookupChordName &&
       c.instrument === instrument &&
-      c.tuning === tuning &&
+      c.tuning === lookupTuning &&
       c.position === position &&
       c.libraryType === 'personal'
     );
@@ -106,9 +138,9 @@ export function findChord(
     // If not found with specific position and fallback is allowed, fall back to position 1 (most common)
     if (!chord && position !== 1 && allowPositionFallback) {
       chord = databaseChords.find(c => 
-        c.name === chordName &&
+        c.name === lookupChordName &&
         c.instrument === instrument &&
-        c.tuning === tuning &&
+        c.tuning === lookupTuning &&
         c.position === 1 &&
         c.libraryType === 'personal'
       );
@@ -117,9 +149,9 @@ export function findChord(
     // Case-insensitive fallback (any position) - only if fallback is allowed or we're looking for position 1
     if (!chord && (allowPositionFallback || position === 1)) {
       chord = databaseChords.find(c => 
-        c.name.toLowerCase() === chordName.toLowerCase() &&
+        c.name.toLowerCase() === lookupChordName.toLowerCase() &&
         c.instrument === instrument &&
-        c.tuning === tuning &&
+        c.tuning === lookupTuning &&
         c.libraryType === 'personal'
       );
     }
@@ -129,9 +161,9 @@ export function findChord(
   if (!chord && databaseChords.length > 0) {
     // Try to find chord with matching position
     chord = databaseChords.find(c => 
-      c.name === chordName &&
+      c.name === lookupChordName &&
       c.instrument === instrument &&
-      c.tuning === tuning &&
+      c.tuning === lookupTuning &&
       c.position === position &&
       c.libraryType === 'main'
     );
@@ -139,9 +171,9 @@ export function findChord(
     // If not found with specific position and fallback is allowed, fall back to position 1 (most common)
     if (!chord && position !== 1 && allowPositionFallback) {
       chord = databaseChords.find(c => 
-        c.name === chordName &&
+        c.name === lookupChordName &&
         c.instrument === instrument &&
-        c.tuning === tuning &&
+        c.tuning === lookupTuning &&
         c.position === 1 &&
         c.libraryType === 'main'
       );
@@ -150,19 +182,19 @@ export function findChord(
     // Case-insensitive fallback (any position) - only if fallback is allowed or we're looking for position 1
     if (!chord && (allowPositionFallback || position === 1)) {
       chord = databaseChords.find(c => 
-        c.name.toLowerCase() === chordName.toLowerCase() &&
+        c.name.toLowerCase() === lookupChordName.toLowerCase() &&
         c.instrument === instrument &&
-        c.tuning === tuning &&
+        c.tuning === lookupTuning &&
         c.libraryType === 'main'
       );
     }
   }
 
-  // Enharmonic: if display name has sharp root (e.g. F#m7), try DB name (Gbm7) for fingering data
-  if (!chord && isSharpRoot(chordName)) {
-    const dbName = toDbName(chordName);
-    if (dbName !== chordName) {
-      chord = findChord(dbName, instrument, tuning, positionOrVariation, options, null, allowPositionFallback);
+  // Enharmonic: if lookup name has sharp root (e.g. F#m7), try DB name (Gbm7) for fingering data
+  if (!chord && isSharpRoot(lookupChordName)) {
+    const dbName = toDbName(lookupChordName);
+    if (dbName !== lookupChordName) {
+      chord = findChord(dbName, instrument, lookupTuning, positionOrVariation, options, null, allowPositionFallback);
     }
   }
   
